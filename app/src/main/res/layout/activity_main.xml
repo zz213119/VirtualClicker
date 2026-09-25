@@ -86,6 +86,85 @@
             android:textSize="14sp" />
 
         <TextView
+            android:id="@+id/inputTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="虚拟屏输入测试"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/inputHelp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="输入坐标会发送到当前 Virtual Display，不会点击手机主屏。"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/inputX"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="X"
+                android:inputType="numberDecimal" />
+
+            <EditText
+                android:id="@+id/inputY"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:hint="Y"
+                android:inputType="numberDecimal" />
+
+            <EditText
+                android:id="@+id/inputDuration"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:hint="长按(ms)"
+                android:inputType="number" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/testTap"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="测试点击" />
+
+        <Button
+            android:id="@+id/testLongPress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="测试长按" />
+
+        <Button
+            android:id="@+id/releaseVirtualDisplay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="释放当前虚拟屏" />
+
+        <TextView
+            android:id="@+id/inputTestStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text=""
+            android:textSize="14sp" />
+
+        <TextView
             android:id="@+id/roadmap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
