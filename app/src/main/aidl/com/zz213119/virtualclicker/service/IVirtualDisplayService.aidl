@@ -18,6 +18,10 @@ interface IVirtualDisplayService {
     // preview of whatever is running on the virtual display.
     int createVirtualDisplayWithSurface(String name, int width, int height, int dpi, in Surface surface);
 
+    // Changes the rendering surface without destroying the virtual display.
+    // Passing null detaches the current Surface; a later call can reattach one.
+    boolean setVirtualDisplaySurface(int displayId, in Surface surface);
+
     // Resolves packageName's own launcher activity and starts it on displayId.
     boolean launchApp(String packageName, int displayId);
 
