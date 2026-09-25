@@ -1,10 +1,7 @@
 package com.zz213119.virtualclicker
 
 import android.content.Intent
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.Surface
@@ -24,7 +21,6 @@ import rikka.shizuku.Shizuku
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
-import com.zz213119.virtualclicker.ui.FloatingPreviewService
 
 class MainActivity : AppCompatActivity() {
     private lateinit var controller: ShizukuController
@@ -43,6 +39,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusDot: View
     private lateinit var statusBadgeText: TextView
     private lateinit var manualControlHint: TextView
+    private lateinit var previewContainer: View
+    private lateinit var fullscreenCloseButton: TextView
+    private var isFullscreen = false
+    private var normalPreviewHeightPx = 0
     private var manualControlEnabled = false
     private var touchDownX = 0f
     private var touchDownY = 0f
@@ -81,6 +81,10 @@ class MainActivity : AppCompatActivity() {
         statusDot = findViewById(R.id.statusDot)
         statusBadgeText = findViewById(R.id.statusBadgeText)
         manualControlHint = findViewById(R.id.manualControlHint)
+        previewContainer = findViewById(R.id.previewContainer)
+        fullscreenCloseButton = findViewById(R.id.fullscreenCloseButton)
+        normalPreviewHeightPx = previewContainer.layoutParams.height
+        fullscreenCloseButton.setOnClickListener { toggleFullscreenPreview() }
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -104,7 +108,7 @@ class MainActivity : AppCompatActivity() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                enterFloatingMode()
+                toggleFullscreenPreview()
                 return true
             }
 
@@ -113,7 +117,7 @@ class MainActivity : AppCompatActivity() {
                 manualControlHint.text = if (manualControlEnabled) {
                     "手动控制：已开启 —— 直接在画面上点击/滑动操作虚拟屏；再长按关闭"
                 } else {
-                    "长按预览画面：开启/关闭应用内手动控制；双击悬浮出去"
+                    "长按预览画面：开启/关闭应用内手动控制；双击放大"
                 }
                 Toast.makeText(
                     this@MainActivity,
@@ -166,6 +170,10 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.launchVirtualDisplay).setOnClickListener {
             launchSelectedAppOnVirtualDisplay()
+        }
+
+        findViewById<Button>(R.id.closeVirtualDisplay).setOnClickListener {
+            releaseCurrentDisplay()
         }
 
         findViewById<Button>(R.id.testTap).setOnClickListener {
@@ -236,61 +244,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val overlayPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (Settings.canDrawOverlays(this)) {
-            startFloatingService()
+    private fun toggleFullscreenPreview() {
+        isFullscreen = !isFullscreen
+
+        val hideIds = intArrayOf(
+            R.id.title, R.id.subtitle, R.id.shizukuStatus, R.id.shizukuPermission,
+            R.id.bindBackend, R.id.backendStatus, R.id.listApps, R.id.appList,
+            R.id.launchVirtualDisplayLabel, R.id.toggleAspectRatio, R.id.manualControlHint,
+            R.id.launchRow, R.id.virtualDisplayStatus, R.id.inputTitle, R.id.inputHelp,
+            R.id.inputRow, R.id.testTap, R.id.testLongPress, R.id.releaseVirtualDisplay,
+            R.id.inputTestStatus, R.id.roadmap
+        )
+
+        val lp = previewContainer.layoutParams
+        if (isFullscreen) {
+            lp.height = resources.displayMetrics.heightPixels
+            for (id in hideIds) findViewById<View>(id)?.visibility = View.GONE
+            fullscreenCloseButton.visibility = View.VISIBLE
         } else {
-            Toast.makeText(this, "没有授予悬浮窗权限，无法开启悬浮预览", Toast.LENGTH_SHORT).show()
+            lp.height = normalPreviewHeightPx
+            for (id in hideIds) findViewById<View>(id)?.visibility = View.VISIBLE
+            fullscreenCloseButton.visibility = View.GONE
         }
-    }
-
-    private fun enterFloatingMode() {
-        val pkg = selectedPackageName
-        if (pkg == null) {
-            Toast.makeText(this, "请先点“查看可添加应用”选一个", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "需要悬浮窗权限，去设置里允许一下", Toast.LENGTH_SHORT).show()
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            overlayPermissionLauncher.launch(intent)
-            return
-        }
-
-        startFloatingService()
-    }
-
-    private fun startFloatingService() {
-        // 悬浮窗会自己重新创建一份虚拟屏（Surface 换成悬浮窗自己的），
-        // App 内这份如果还在跑就先释放掉，避免两边各占一个虚拟屏。
-        if (currentDisplayId >= 0) {
-            val oldId = currentDisplayId
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldId) }
-            }
-            currentDisplayId = -1
-            setPreviewRunning(false)
-        }
-
-        val intent = Intent(this, FloatingPreviewService::class.java).apply {
-            putExtra(FloatingPreviewService.EXTRA_PACKAGE_NAME, selectedPackageName)
-            putExtra(FloatingPreviewService.EXTRA_WIDTH, displayWidth)
-            putExtra(FloatingPreviewService.EXTRA_HEIGHT, displayHeight)
-            putExtra(FloatingPreviewService.EXTRA_DPI, displayDpi)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-        virtualDisplayStatus.text = "已切到悬浮预览，回桌面找那个浮动小窗"
-        moveTaskToBack(true)
+        previewContainer.layoutParams = lp
     }
 
     private fun toggleAspectRatio() {
