@@ -24,6 +24,7 @@ import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
     private lateinit var controller: ShizukuController
@@ -39,6 +40,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoClickInterval: android.widget.EditText
     private lateinit var autoClickCount: android.widget.EditText
     private lateinit var autoClickStatus: TextView
+    private lateinit var pickCoordinateButton: Button
+    private lateinit var pickCoordinateStatus: TextView
+    private var pointPickMode = false
     private var currentDisplayId: Int = -1
     private lateinit var previewSurfaceView: SurfaceView
     private var previewSurface: Surface? = null
@@ -89,6 +93,8 @@ class MainActivity : AppCompatActivity() {
         autoClickInterval = findViewById(R.id.autoClickInterval)
         autoClickCount = findViewById(R.id.autoClickCount)
         autoClickStatus = findViewById(R.id.autoClickStatus)
+        pickCoordinateButton = findViewById(R.id.pickCoordinate)
+        pickCoordinateStatus = findViewById(R.id.pickCoordinateStatus)
         previewSurfaceView = findViewById(R.id.virtualDisplaySurface)
         previewPlaceholder = findViewById(R.id.previewPlaceholder)
         statusDot = findViewById(R.id.statusDot)
@@ -165,6 +171,13 @@ class MainActivity : AppCompatActivity() {
         })
 
         previewSurfaceView.setOnTouchListener { view, event ->
+            // Coordinate-picking mode has priority over manual control. In this
+            // mode touches only calculate/fill X/Y and never reach the target app.
+            if (pointPickMode) {
+                handleCoordinatePick(view, event)
+                return@setOnTouchListener true
+            }
+
             doubleTapDetector.onTouchEvent(event)
 
             if (manualControlEnabled) {
@@ -174,6 +187,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupResolutionSpinner()
+
+        pickCoordinateButton.setOnClickListener {
+            setPointPickMode(!pointPickMode)
+        }
 
         findViewById<Button>(R.id.startAutoClick).setOnClickListener {
             startAutoClicker()
@@ -247,6 +264,56 @@ class MainActivity : AppCompatActivity() {
      * 手动控制：把预览 SurfaceView 上的触摸坐标，按显示比例换算成虚拟屏坐标，
      * 转发给 VirtualDisplayManager。按下-抬起距离很小当点击，距离大当滑动。
      */
+    private fun setPointPickMode(enabled: Boolean) {
+        pointPickMode = enabled
+
+        if (enabled) {
+            // Picking a point and actually touching the target app are
+            // mutually exclusive, so disable manual control while picking.
+            manualControlEnabled = false
+            manualControlHint.text =
+                "取点模式：点击预览画面获取坐标，不会点击目标应用；再次点“结束取点”退出"
+            pickCoordinateButton.text = "结束取点"
+            pickCoordinateStatus.text =
+                "取点模式：已开启 · 当前虚拟屏 ${displayWidth}×${displayHeight}"
+        } else {
+            pickCoordinateButton.text = "取点坐标（点击预览获取 X/Y）"
+            pickCoordinateStatus.text = "取点模式：未开启"
+            manualControlHint.text =
+                "双击预览：放大/缩小（放大后点右上角 ✕ 缩回，游戏不会关闭）；长按：应用内手动控制"
+        }
+    }
+
+    /**
+     * Convert a touch point on the preview view into the current Virtual
+     * Display coordinate system and fill the same X/Y fields used by the
+     * auto clicker.
+     */
+    private fun handleCoordinatePick(view: View, event: MotionEvent) {
+        if (event.action != MotionEvent.ACTION_UP) return
+
+        val viewWidth = view.width.coerceAtLeast(1)
+        val viewHeight = view.height.coerceAtLeast(1)
+
+        val x = (event.x / viewWidth.toFloat() * displayWidth)
+            .roundToInt()
+            .coerceIn(0, displayWidth - 1)
+        val y = (event.y / viewHeight.toFloat() * displayHeight)
+            .roundToInt()
+            .coerceIn(0, displayHeight - 1)
+
+        inputX.setText(x.toString())
+        inputY.setText(y.toString())
+        pickCoordinateStatus.text =
+            "已获取坐标：X=$x  Y=$y · ${displayWidth}×${displayHeight}"
+
+        Toast.makeText(
+            this,
+            "已获取坐标：($x, $y)",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     private fun handleManualTouch(view: View, event: MotionEvent) {
         val displayId = currentDisplayId
         if (displayId < 0) return
@@ -295,8 +362,9 @@ class MainActivity : AppCompatActivity() {
             R.id.bindBackend, R.id.backendStatus, R.id.listApps, R.id.appList,
             R.id.launchVirtualDisplayLabel, R.id.resolutionLabel, R.id.resolutionSpinner,
             R.id.manualControlHint, R.id.launchRow, R.id.virtualDisplayStatus, R.id.inputTitle,
-            R.id.inputHelp, R.id.inputRow, R.id.autoClickTitle, R.id.autoClickHelp,
-            R.id.autoClickRow, R.id.autoClickButtons, R.id.autoClickStatus, R.id.testTap,
+            R.id.inputHelp, R.id.inputRow, R.id.pickCoordinate, R.id.pickCoordinateStatus,
+            R.id.autoClickTitle, R.id.autoClickHelp, R.id.autoClickRow, R.id.autoClickButtons,
+            R.id.autoClickStatus, R.id.testTap,
             R.id.testLongPress, R.id.releaseVirtualDisplay, R.id.inputTestStatus, R.id.roadmap
         )
 
