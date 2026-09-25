@@ -1,12 +1,14 @@
 package com.zz213119.virtualclicker
 
-import android.content.pm.ApplicationInfo
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import rikka.shizuku.Shizuku
 import com.zz213119.virtualclicker.shizuku.ShizukuController
+import com.zz213119.virtualclicker.ui.AppPickerActivity
 
 class MainActivity : AppCompatActivity() {
     private lateinit var controller: ShizukuController
@@ -55,11 +57,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.listApps).setOnClickListener {
-            loadApps()
+            appPickerLauncher.launch(Intent(this, AppPickerActivity::class.java))
         }
 
         refreshStatus()
     }
+
+    private val appPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val label = result.data?.getStringExtra(AppPickerActivity.EXTRA_LABEL)
+            val pkg = result.data?.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME)
+            selectedPackageName = pkg
+            appList.text = if (pkg != null) "已选择：$label\n$pkg" else ""
+        }
+    }
+
+    /** 供后续 Phase 1 的 createDisplay+launch 调用链使用。 */
+    var selectedPackageName: String? = null
+        private set
 
     override fun onDestroy() {
         Shizuku.removeBinderReceivedListener(binderListener)
@@ -78,15 +95,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadApps() {
-        val pm = packageManager
-        val apps = pm.getInstalledApplications(0)
-            .asSequence()
-            .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
-            .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
-            .take(80)
-            .joinToString("\n") { "${pm.getApplicationLabel(it)}\n  ${it.packageName}" }
-
-        appList.text = apps.ifBlank { "未找到第三方应用" }
-    }
 }

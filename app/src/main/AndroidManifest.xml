@@ -18,6 +18,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.AppPickerActivity"
+            android:exported="false" />
+
         <service
             android:name=".shizuku.BackendUserService"
             android:exported="false" />
