@@ -65,6 +65,10 @@ class FloatingPreviewService : Service() {
     private var running = true
     private var cardHidden = false
 
+    // Invalidates an in-flight create/attach operation when the floating
+    // surface is recreated or the service is being destroyed.
+    private var displayOperationGeneration = 0L
+
     // 拖动整个悬浮窗用
     private var dragStartRawX = 0f
     private var dragStartRawY = 0f
@@ -158,6 +162,15 @@ class FloatingPreviewService : Service() {
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                displayOperationGeneration++
+                val id = displayId
+                if (id >= 0) {
+                    serviceScope.launch {
+                        kotlinx.coroutines.withContext(Dispatchers.IO) {
+                            VirtualDisplayManager.setDisplaySurface(id, null)
+                        }
+                    }
+                }
             }
         })
 
@@ -165,11 +178,28 @@ class FloatingPreviewService : Service() {
     }
 
     private fun startVirtualDisplay(holder: SurfaceHolder) {
+        val operation = ++displayOperationGeneration
+
         serviceScope.launch {
             val bound = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 VirtualDisplayManager.ensureBound()
             }
             if (!bound) return@launch
+
+            val existingId = displayId
+            if (existingId >= 0) {
+                val attached = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.setDisplaySurface(existingId, holder.surface)
+                }
+                if (!attached && displayId == existingId) {
+                    displayId = -1
+                } else {
+                    return@launch
+                }
+            }
+
+            if (operation != displayOperationGeneration) return@launch
+            if (!holder.surface.isValid) return@launch
 
             val id = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 VirtualDisplayManager.createDisplayWithSurface(
@@ -177,10 +207,28 @@ class FloatingPreviewService : Service() {
                 )
             }
             if (id < 0) return@launch
+
+            // Surface recreation/destruction or service teardown may have
+            // happened while the Binder call was running. Release the
+            // late-created display instead of leaving an orphan behind.
+            if (operation != displayOperationGeneration) {
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.release(id)
+                }
+                return@launch
+            }
+
             displayId = id
 
-            kotlinx.coroutines.withContext(Dispatchers.IO) {
+            val launched = kotlinx.coroutines.withContext(Dispatchers.IO) {
                 VirtualDisplayManager.launch(targetPackage, id)
+            }
+
+            if (!launched || operation != displayOperationGeneration) {
+                if (displayId == id) displayId = -1
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.release(id)
+                }
             }
         }
     }
@@ -281,9 +329,13 @@ class FloatingPreviewService : Service() {
     }
 
     override fun onDestroy() {
+        // Explicit service teardown always releases the display. The
+        // release path detaches the Surface before calling release().
+        displayOperationGeneration++
         val id = displayId
+        displayId = -1
         if (id >= 0) {
-            serviceScope.launch(Dispatchers.IO) {
+            runCatching {
                 VirtualDisplayManager.release(id)
             }
         }
