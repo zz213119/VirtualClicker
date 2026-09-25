@@ -8,7 +8,9 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
+import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
 
@@ -32,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputX: android.widget.EditText
     private lateinit var inputY: android.widget.EditText
     private lateinit var inputDuration: android.widget.EditText
+    private lateinit var resolutionSpinner: Spinner
+    private lateinit var autoClickInterval: android.widget.EditText
+    private lateinit var autoClickCount: android.widget.EditText
+    private lateinit var autoClickStatus: TextView
     private var currentDisplayId: Int = -1
     private lateinit var previewSurfaceView: SurfaceView
     private var previewSurface: Surface? = null
@@ -58,7 +65,6 @@ class MainActivity : AppCompatActivity() {
     private var displayWidth = 1080
     private var displayHeight = 1920
     private var displayDpi = 320
-    private var is4x3 = false
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -80,6 +86,10 @@ class MainActivity : AppCompatActivity() {
         inputX = findViewById(R.id.inputX)
         inputY = findViewById(R.id.inputY)
         inputDuration = findViewById(R.id.inputDuration)
+        resolutionSpinner = findViewById(R.id.resolutionSpinner)
+        autoClickInterval = findViewById(R.id.autoClickInterval)
+        autoClickCount = findViewById(R.id.autoClickCount)
+        autoClickStatus = findViewById(R.id.autoClickStatus)
         previewSurfaceView = findViewById(R.id.virtualDisplaySurface)
         previewPlaceholder = findViewById(R.id.previewPlaceholder)
         statusDot = findViewById(R.id.statusDot)
@@ -164,8 +174,14 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        findViewById<Button>(R.id.toggleAspectRatio).setOnClickListener {
-            toggleAspectRatio()
+        setupResolutionSpinner()
+
+        findViewById<Button>(R.id.startAutoClick).setOnClickListener {
+            startAutoClicker()
+        }
+
+        findViewById<Button>(R.id.stopAutoClick).setOnClickListener {
+            stopAutoClicker()
         }
 
         controller = ShizukuController(packageName)
@@ -278,10 +294,11 @@ class MainActivity : AppCompatActivity() {
         val hideIds = intArrayOf(
             R.id.title, R.id.subtitle, R.id.shizukuStatus, R.id.shizukuPermission,
             R.id.bindBackend, R.id.backendStatus, R.id.listApps, R.id.appList,
-            R.id.launchVirtualDisplayLabel, R.id.toggleAspectRatio, R.id.manualControlHint,
-            R.id.launchRow, R.id.virtualDisplayStatus, R.id.inputTitle, R.id.inputHelp,
-            R.id.inputRow, R.id.testTap, R.id.testLongPress, R.id.releaseVirtualDisplay,
-            R.id.inputTestStatus, R.id.roadmap
+            R.id.launchVirtualDisplayLabel, R.id.resolutionLabel, R.id.resolutionSpinner,
+            R.id.manualControlHint, R.id.launchRow, R.id.virtualDisplayStatus, R.id.inputTitle,
+            R.id.inputHelp, R.id.inputRow, R.id.autoClickTitle, R.id.autoClickHelp,
+            R.id.autoClickRow, R.id.autoClickButtons, R.id.autoClickStatus, R.id.testTap,
+            R.id.testLongPress, R.id.releaseVirtualDisplay, R.id.inputTestStatus, R.id.roadmap
         )
 
         val lp = previewContainer.layoutParams
@@ -297,33 +314,148 @@ class MainActivity : AppCompatActivity() {
         previewContainer.layoutParams = lp
     }
 
-    private fun toggleAspectRatio() {
-        displayOperationGeneration++
-        is4x3 = !is4x3
-        if (is4x3) {
-            displayWidth = 1200
-            displayHeight = 1600
-        } else {
-            displayWidth = 1080
-            displayHeight = 1920
-        }
-        previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
-        findViewById<Button>(R.id.toggleAspectRatio).text =
-            if (is4x3) "切换为 16:9" else "切换为 4:3"
+    private data class ResolutionPreset(
+        val label: String,
+        val width: Int,
+        val height: Int,
+        val dpi: Int
+    )
 
-        if (currentDisplayId >= 0) {
-            val oldId = currentDisplayId
-            currentDisplayId = -1
-            setPreviewRunning(false)
+    private val resolutionPresets = listOf(
+        ResolutionPreset("480p（480×854）", 480, 854, 160),
+        ResolutionPreset("720p（720×1280）", 720, 1280, 240),
+        ResolutionPreset("1080p（1080×1920）", 1080, 1920, 320)
+    )
+
+    private fun setupResolutionSpinner() {
+        val labels = resolutionPresets.map { it.label }
+        resolutionSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            labels
+        ).also {
+            it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+
+        resolutionSpinner.setSelection(2, false)
+
+        resolutionSpinner.onItemSelectedListener =
+            object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    applyResolution(resolutionPresets[position])
+                }
+            }
+    }
+
+    private fun applyResolution(preset: ResolutionPreset) {
+        if (
+            displayWidth == preset.width &&
+            displayHeight == preset.height &&
+            displayDpi == preset.dpi
+        ) {
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            return
+        }
+
+        displayWidth = preset.width
+        displayHeight = preset.height
+        displayDpi = preset.dpi
+        displayOperationGeneration++
+
+        stopAutoClicker()
+
+        val oldDisplayId = currentDisplayId
+        currentDisplayId = -1
+        setPreviewRunning(false)
+
+        if (oldDisplayId >= 0) {
+            val operation = displayOperationGeneration
+            virtualDisplayStatus.text =
+                "正在切换到 ${preset.label}，先释放当前虚拟屏…"
             lifecycleScope.launch {
-                withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldId) }
+                withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.release(oldDisplayId)
+                }
+                if (operation != displayOperationGeneration) return@launch
+                previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
                 virtualDisplayStatus.text =
-                    "已切换分辨率为 ${displayWidth}x$displayHeight，原虚拟屏已释放，请重新点“启动到虚拟屏”"
+                    "已切换为 ${preset.label}，请重新点“启动到虚拟屏”"
             }
         } else {
-            virtualDisplayStatus.text = "下次启动将使用 ${displayWidth}x$displayHeight"
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            virtualDisplayStatus.text = "下次启动将使用 ${preset.label}"
         }
     }
+
+    private fun startAutoClicker() {
+        val displayId = currentDisplayId
+        if (displayId < 0) {
+            autoClickStatus.text = "连点器：请先启动虚拟屏"
+            return
+        }
+
+        val x = inputX.text.toString().trim().toFloatOrNull()
+        val y = inputY.text.toString().trim().toFloatOrNull()
+        if (x == null || y == null || x < 0f || y < 0f) {
+            autoClickStatus.text = "连点器：请输入有效的 X / Y"
+            return
+        }
+
+        val interval = inputIntOrNull(autoClickInterval.text.toString())
+        val count = inputIntOrNull(autoClickCount.text.toString())
+        if (interval == null || interval < 50) {
+            autoClickStatus.text = "连点器：间隔最小 50ms"
+            return
+        }
+        if (count == null || count < 0) {
+            autoClickStatus.text = "连点器：次数必须是 0 或正整数"
+            return
+        }
+        if (x > displayWidth || y > displayHeight) {
+            autoClickStatus.text =
+                "连点器：坐标超出当前 ${displayWidth}×${displayHeight} 虚拟屏"
+            return
+        }
+
+        val intent = Intent(this, AutoClickService::class.java)
+            .setAction(AutoClickService.ACTION_START)
+            .putExtra(AutoClickService.EXTRA_DISPLAY_ID, displayId)
+            .putExtra(AutoClickService.EXTRA_X, x)
+            .putExtra(AutoClickService.EXTRA_Y, y)
+            .putExtra(AutoClickService.EXTRA_INTERVAL_MS, interval.toLong())
+            .putExtra(AutoClickService.EXTRA_REPEAT_COUNT, count)
+
+        try {
+            androidx.core.content.ContextCompat.startForegroundService(this, intent)
+            autoClickStatus.text = if (count == 0) {
+                "连点器：运行中 · ($x, $y) · ${interval}ms · 无限"
+            } else {
+                "连点器：运行中 · ($x, $y) · ${interval}ms · ${count}次"
+            }
+        } catch (t: Throwable) {
+            autoClickStatus.text = "连点器启动失败：${t.message ?: "未知错误"}"
+        }
+    }
+
+    private fun stopAutoClicker() {
+        runCatching {
+            stopService(
+                Intent(this, AutoClickService::class.java)
+                    .setAction(AutoClickService.ACTION_STOP)
+            )
+        }
+        autoClickStatus.text = "连点器：已停止"
+    }
+
+    private fun inputIntOrNull(text: String): Int? =
+        text.trim().toIntOrNull()
 
     /**
      * Phase 1 验证链路：绑定 UserService → 建虚拟屏 → 把选中的 App 启动进去。
@@ -483,6 +615,7 @@ class MainActivity : AppCompatActivity() {
         // surface callback cannot release the same display twice.
         currentDisplayId = -1
         setPreviewRunning(false)
+        stopAutoClicker()
 
         lifecycleScope.launch {
             virtualDisplayStatus.text = "正在彻底释放虚拟屏 #$displayId…"
@@ -515,6 +648,7 @@ class MainActivity : AppCompatActivity() {
         displayOperationGeneration++
         val displayId = currentDisplayId
         currentDisplayId = -1
+        stopAutoClicker()
         if (displayId >= 0) {
             runCatching {
                 VirtualDisplayManager.release(displayId)
