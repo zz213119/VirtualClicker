@@ -35,13 +35,38 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     override fun createVirtualDisplay(name: String, width: Int, height: Int, dpi: Int): Int {
-        return try {
-            // Phase 1 doesn't need to read frames back yet — the ImageReader
-            // surface is just a legal render target so the virtual display
-            // has somewhere to draw. Frame capture (for OCR/matching) is a
-            // later phase; swap this for a persistent reader + listener then.
-            val sink = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        // "盲" 版本：用一个自己持有、外部拿不到的 ImageReader 当渲染目标，
+        // 画面直接被丢弃，只用于测试输入注入链路。
+        val sink = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        val displayId = createDisplayInternal(name, width, height, dpi, sink.surface)
+        if (displayId >= 0) {
+            sinks[displayId] = sink
+        } else {
+            sink.close()
+        }
+        return displayId
+    }
 
+    override fun createVirtualDisplayWithSurface(
+        name: String,
+        width: Int,
+        height: Int,
+        dpi: Int,
+        surface: android.view.Surface
+    ): Int {
+        // 预览版本：直接把调用方（App 进程里的 SurfaceView）的 Surface 作为
+        // 虚拟屏的渲染目标，画面就是实时预览，不需要跨进程搬运帧数据。
+        return createDisplayInternal(name, width, height, dpi, surface)
+    }
+
+    private fun createDisplayInternal(
+        name: String,
+        width: Int,
+        height: Int,
+        dpi: Int,
+        surface: android.view.Surface
+    ): Int {
+        return try {
             val supportsTouch = 1 shl 6
             val destroyContentOnRemoval = 1 shl 8
             val trusted = 1 shl 10
@@ -78,12 +103,11 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             )
 
             val vd = displayManager.createVirtualDisplay(
-                name, width, height, dpi, sink.surface, flags
+                name, width, height, dpi, surface, flags
             )
 
             val displayId = vd.display.displayId
             displays[displayId] = vd
-            sinks[displayId] = sink
             Log.i(TAG, "created virtual display id=$displayId ${width}x$height@$dpi")
             appendLog(
                 "CREATE DISPLAY SUCCESS",

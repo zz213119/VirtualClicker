@@ -2,6 +2,9 @@ package com.zz213119.virtualclicker
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Surface
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -27,6 +30,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputY: android.widget.EditText
     private lateinit var inputDuration: android.widget.EditText
     private var currentDisplayId: Int = -1
+    private lateinit var previewSurfaceView: SurfaceView
+    private var previewSurface: Surface? = null
+
+    // 预览用固定分辨率，要跟 createDisplay 调用里传的 width/height 保持一致，
+    // 否则虚拟屏渲染出来的画面跟 SurfaceView 缓冲区大小对不上，会被裁切/拉伸。
+    private val displayWidth = 1080
+    private val displayHeight = 1920
+    private val displayDpi = 320
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -48,6 +59,25 @@ class MainActivity : AppCompatActivity() {
         inputX = findViewById(R.id.inputX)
         inputY = findViewById(R.id.inputY)
         inputDuration = findViewById(R.id.inputDuration)
+        previewSurfaceView = findViewById(R.id.virtualDisplaySurface)
+        previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+        previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                previewSurface = holder.surface
+            }
+
+            override fun surfaceChanged(
+                holder: SurfaceHolder,
+                format: Int,
+                width: Int,
+                height: Int
+            ) {
+            }
+
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                previewSurface = null
+            }
+        })
 
         controller = ShizukuController(packageName)
 
@@ -117,8 +147,17 @@ class MainActivity : AppCompatActivity() {
             }
 
             virtualDisplayStatus.text = "创建虚拟屏…"
+            val surface = previewSurface
             val displayId = withContext(Dispatchers.IO) {
-                VirtualDisplayManager.createDisplay("vc_display_1", 1080, 1920, 320)
+                if (surface != null) {
+                    VirtualDisplayManager.createDisplayWithSurface(
+                        "vc_display_1", displayWidth, displayHeight, displayDpi, surface
+                    )
+                } else {
+                    VirtualDisplayManager.createDisplay(
+                        "vc_display_1", displayWidth, displayHeight, displayDpi
+                    )
+                }
             }
             if (displayId < 0) {
                 virtualDisplayStatus.text = "创建虚拟屏失败，查看 Logcat tag VDUserService"

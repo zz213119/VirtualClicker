@@ -71,6 +71,20 @@ object VirtualDisplayManager {
             .onFailure { Log.e(TAG, "createDisplay failed", it) }
             .getOrDefault(-1)
 
+    /** 带实时预览版本：surface 通常来自 MainActivity 里 SurfaceView 的 SurfaceHolder。 */
+    fun createDisplayWithSurface(
+        name: String,
+        width: Int,
+        height: Int,
+        dpi: Int,
+        surface: android.view.Surface
+    ): Int =
+        runCatching {
+            service?.createVirtualDisplayWithSurface(name, width, height, dpi, surface) ?: -1
+        }
+            .onFailure { Log.e(TAG, "createDisplayWithSurface failed", it) }
+            .getOrDefault(-1)
+
     fun launch(packageName: String, displayId: Int): Boolean =
         runCatching { service?.launchApp(packageName, displayId) ?: false }
             .onFailure { Log.e(TAG, "launch failed", it) }
