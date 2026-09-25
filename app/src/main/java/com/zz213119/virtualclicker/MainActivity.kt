@@ -48,6 +48,10 @@ class MainActivity : AppCompatActivity() {
     private var touchDownY = 0f
     private var touchDownTime = 0L
 
+    // Invalidates an in-flight create operation when the user closes/reconfigures
+    // the display before the binder call has returned.
+    private var displayOperationGeneration = 0L
+
     // 预览用固定分辨率，要跟 createDisplay 调用里传的 width/height 保持一致，
     // 否则虚拟屏渲染出来的画面跟 SurfaceView 缓冲区大小对不上，会被裁切/拉伸。
     // 改成 var：支持“切换为 4:3”按钮动态调整。
@@ -89,6 +93,18 @@ class MainActivity : AppCompatActivity() {
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 previewSurface = holder.surface
+
+                // Reattach the preview surface when the Activity/window recreates
+                // it. The virtual display itself remains alive until explicitly
+                // closed or the Activity is actually destroyed.
+                val displayId = currentDisplayId
+                if (displayId >= 0 && !isFinishing) {
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            VirtualDisplayManager.setDisplaySurface(displayId, holder.surface)
+                        }
+                    }
+                }
             }
 
             override fun surfaceChanged(
@@ -101,6 +117,18 @@ class MainActivity : AppCompatActivity() {
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
                 previewSurface = null
+
+                // Detach the Surface instead of destroying the virtual display.
+                // This prevents SurfaceFlinger from keeping a dead Surface attached
+                // while allowing the target app/display to continue existing.
+                val displayId = currentDisplayId
+                if (displayId >= 0) {
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            VirtualDisplayManager.setDisplaySurface(displayId, null)
+                        }
+                    }
+                }
             }
         })
 
@@ -270,6 +298,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleAspectRatio() {
+        displayOperationGeneration++
         is4x3 = !is4x3
         if (is4x3) {
             displayWidth = 1200
@@ -284,10 +313,10 @@ class MainActivity : AppCompatActivity() {
 
         if (currentDisplayId >= 0) {
             val oldId = currentDisplayId
+            currentDisplayId = -1
+            setPreviewRunning(false)
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldId) }
-                currentDisplayId = -1
-                setPreviewRunning(false)
                 virtualDisplayStatus.text =
                     "已切换分辨率为 ${displayWidth}x$displayHeight，原虚拟屏已释放，请重新点“启动到虚拟屏”"
             }
@@ -307,45 +336,84 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (currentDisplayId >= 0) {
+            Toast.makeText(this, "当前已有虚拟屏，请先关闭后再启动", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val operation = ++displayOperationGeneration
+
         lifecycleScope.launch {
             virtualDisplayStatus.text = "连接虚拟屏后端…"
 
             val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
             if (!bound) {
-                virtualDisplayStatus.text = "连接失败（确认 Shizuku 已授权本应用）"
+                if (operation == displayOperationGeneration) {
+                    virtualDisplayStatus.text = "连接失败（确认 Shizuku 已授权本应用）"
+                }
                 return@launch
             }
+
+            if (operation != displayOperationGeneration) return@launch
 
             virtualDisplayStatus.text = "创建虚拟屏…"
             val surface = previewSurface
-            val displayId = withContext(Dispatchers.IO) {
-                if (surface != null) {
-                    VirtualDisplayManager.createDisplayWithSurface(
-                        "vc_display_1", displayWidth, displayHeight, displayDpi, surface
-                    )
-                } else {
-                    VirtualDisplayManager.createDisplay(
-                        "vc_display_1", displayWidth, displayHeight, displayDpi
-                    )
-                }
-            }
-            if (displayId < 0) {
-                virtualDisplayStatus.text = "创建虚拟屏失败，查看 Logcat tag VDUserService"
+            if (surface == null || !surface.isValid) {
+                virtualDisplayStatus.text = "预览 Surface 尚未就绪，请稍后再试"
                 return@launch
             }
 
+            val displayId = withContext(Dispatchers.IO) {
+                VirtualDisplayManager.createDisplayWithSurface(
+                    "vc_display_1", displayWidth, displayHeight, displayDpi, surface
+                )
+            }
+
+            if (displayId < 0) {
+                if (operation == displayOperationGeneration) {
+                    virtualDisplayStatus.text = "创建虚拟屏失败，查看日志目录与 Logcat tag VDUserService"
+                }
+                return@launch
+            }
+
+            // The user may have pressed close/aspect-ratio while createVirtualDisplay
+            // was blocked in Binder. Do not orphan the newly-created display.
+            if (operation != displayOperationGeneration || isFinishing) {
+                withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.release(displayId)
+                }
+                return@launch
+            }
+
+            currentDisplayId = displayId
+            setPreviewRunning(true)
             virtualDisplayStatus.text = "虚拟屏 #$displayId 已创建，正在启动 $pkg…"
+
             val ok = withContext(Dispatchers.IO) {
                 VirtualDisplayManager.launch(pkg, displayId)
             }
-            if (ok) {
-                currentDisplayId = displayId
-                setPreviewRunning(true)
+
+            if (operation != displayOperationGeneration || isFinishing) {
+                if (currentDisplayId == displayId) currentDisplayId = -1
+                setPreviewRunning(false)
+                withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.release(displayId)
+                }
+                return@launch
             }
+
+            if (!ok) {
+                currentDisplayId = -1
+                setPreviewRunning(false)
+                withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.release(displayId)
+                }
+            }
+
             virtualDisplayStatus.text = if (ok) {
                 "已在虚拟屏 #$displayId 启动 $pkg，切回桌面看看它是否还在后台跑"
             } else {
-                "启动失败，详细输出已保存到 Android/data/com.zz213119.virtualclicker/files/logs/；同时也会写入 Logcat tag VDUserService"
+                "启动失败，虚拟屏已自动释放；详细输出已保存到 Android/data/com.zz213119.virtualclicker/files/logs/"
             }
         }
     }
@@ -402,19 +470,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun releaseCurrentDisplay() {
+        // Invalidate any create/launch coroutine that is still in flight.
+        displayOperationGeneration++
+
         val displayId = currentDisplayId
         if (displayId < 0) {
             inputTestStatus.text = "当前没有受 VirtualClicker 管理的虚拟屏"
             return
         }
 
+        // Clear the UI-owned id immediately so a second close or another
+        // surface callback cannot release the same display twice.
+        currentDisplayId = -1
+        setPreviewRunning(false)
+
         lifecycleScope.launch {
+            virtualDisplayStatus.text = "正在彻底释放虚拟屏 #$displayId…"
             withContext(Dispatchers.IO) {
                 VirtualDisplayManager.release(displayId)
             }
-            currentDisplayId = -1
-            setPreviewRunning(false)
-            virtualDisplayStatus.text = "已释放虚拟屏 #$displayId"
+            virtualDisplayStatus.text = "已释放虚拟屏 #$displayId，系统显示资源正在完成清理"
             inputTestStatus.text = "虚拟屏已释放"
         }
     }
@@ -434,6 +509,20 @@ class MainActivity : AppCompatActivity() {
         private set
 
     override fun onDestroy() {
+        // Activity destruction is a real teardown point. Invalidate any
+        // in-flight creation and ask the Shizuku backend to detach the
+        // Surface and release the display before this Activity disappears.
+        displayOperationGeneration++
+        val displayId = currentDisplayId
+        currentDisplayId = -1
+        if (displayId >= 0) {
+            runCatching {
+                VirtualDisplayManager.release(displayId)
+            }.onFailure {
+                android.util.Log.e("MainActivity", "final virtual display release failed", it)
+            }
+        }
+
         Shizuku.removeBinderReceivedListener(binderListener)
         Shizuku.removeBinderDeadListener(binderDeadListener)
         controller.unbind()
