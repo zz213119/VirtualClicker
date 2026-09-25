@@ -1,7 +1,7 @@
 package com.zz213119.virtualclicker.service
 
 import android.content.Context
-import android.graphics.ImageFormat
+import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -34,7 +34,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // surface is just a legal render target so the virtual display
             // has somewhere to draw. Frame capture (for OCR/matching) is a
             // later phase; swap this for a persistent reader + listener then.
-            val sink = ImageReader.newInstance(width, height, ImageFormat.RGBA_8888, 2)
+            val sink = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
             val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
