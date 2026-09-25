@@ -28,6 +28,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     private val displays = mutableMapOf<Int, VirtualDisplay>()
     private val sinks = mutableMapOf<Int, ImageReader>()
+    private val inputEngine = InputEngine()
 
     private val displayManager: DisplayManager by lazy {
         createShellContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -149,6 +150,53 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         displays.remove(displayId)?.release()
         sinks.remove(displayId)?.close()
         Log.i(TAG, "released virtual display id=$displayId")
+    }
+
+    override fun tap(displayId: Int, x: Float, y: Float): Boolean {
+        if (!isDisplayManaged(displayId)) {
+            Log.w(TAG, "tap rejected: displayId=$displayId is not managed by this service")
+            LogWriter.write(
+                "INPUT REJECTED",
+                "type=TAP\ndisplayId=$displayId\nreason=display_not_managed"
+            )
+            return false
+        }
+        return inputEngine.tap(displayId, x, y)
+    }
+
+    override fun longPress(displayId: Int, x: Float, y: Float, durationMs: Int): Boolean {
+        if (!isDisplayManaged(displayId)) {
+            Log.w(TAG, "longPress rejected: displayId=$displayId is not managed by this service")
+            LogWriter.write(
+                "INPUT REJECTED",
+                "type=LONG_PRESS\ndisplayId=$displayId\nreason=display_not_managed"
+            )
+            return false
+        }
+        return inputEngine.longPress(displayId, x, y, durationMs)
+    }
+
+    override fun swipe(
+        displayId: Int,
+        x1: Float,
+        y1: Float,
+        x2: Float,
+        y2: Float,
+        durationMs: Int
+    ): Boolean {
+        if (!isDisplayManaged(displayId)) {
+            Log.w(TAG, "swipe rejected: displayId=$displayId is not managed by this service")
+            LogWriter.write(
+                "INPUT REJECTED",
+                "type=SWIPE\ndisplayId=$displayId\nreason=display_not_managed"
+            )
+            return false
+        }
+        return inputEngine.swipe(displayId, x1, y1, x2, y2, durationMs)
+    }
+
+    private fun isDisplayManaged(displayId: Int): Boolean {
+        return displays.containsKey(displayId)
     }
 
     override fun destroy() {
