@@ -66,6 +66,14 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             }
 
             Log.i(TAG, "creating display with flags=0x" + flags.toString(16))
+            appendLog(
+                "CREATE DISPLAY",
+                "uid=${Process.myUid()}\n" +
+                    "pid=${Process.myPid()}\n" +
+                    "package=${createShellContext().packageName}\n" +
+                    "name=$name\nsize=${width}x${height}\ndpi=$dpi\n" +
+                    "flags=0x${flags.toString(16)}"
+            )
 
             val vd = displayManager.createVirtualDisplay(
                 name, width, height, dpi, sink.surface, flags
@@ -75,9 +83,16 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             displays[displayId] = vd
             sinks[displayId] = sink
             Log.i(TAG, "created virtual display id=$displayId ${width}x$height@$dpi")
+            appendLog(
+                "CREATE DISPLAY SUCCESS",
+                "displayId=${displayId}\n" +
+                    "actual=${vd.display.width}x${vd.display.height}\n" +
+                    "rotation=${vd.display.rotation}"
+            )
             displayId
         } catch (e: Throwable) {
             Log.e(TAG, "createVirtualDisplay failed", e)
+            appendLog("CREATE DISPLAY FAILED", e.stackTraceToString())
             -1
         }
     }
@@ -114,6 +129,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             exit == 0 && !output.contains("Error:", ignoreCase = true)
         } catch (e: Throwable) {
             Log.e(TAG, "launchAppExplicit failed", e)
+            appendLog("LAUNCH EXCEPTION", e.stackTraceToString())
             false
         }
     }
