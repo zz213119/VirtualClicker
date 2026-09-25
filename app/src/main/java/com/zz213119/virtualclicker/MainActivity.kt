@@ -22,6 +22,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var backendStatus: TextView
     private lateinit var appList: TextView
     private lateinit var virtualDisplayStatus: TextView
+    private lateinit var inputTestStatus: TextView
+    private lateinit var inputX: android.widget.EditText
+    private lateinit var inputY: android.widget.EditText
+    private lateinit var inputDuration: android.widget.EditText
+    private var currentDisplayId: Int = -1
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -39,6 +44,10 @@ class MainActivity : AppCompatActivity() {
         backendStatus = findViewById(R.id.backendStatus)
         appList = findViewById(R.id.appList)
         virtualDisplayStatus = findViewById(R.id.virtualDisplayStatus)
+        inputTestStatus = findViewById(R.id.inputTestStatus)
+        inputX = findViewById(R.id.inputX)
+        inputY = findViewById(R.id.inputY)
+        inputDuration = findViewById(R.id.inputDuration)
 
         controller = ShizukuController(packageName)
 
@@ -70,6 +79,18 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.launchVirtualDisplay).setOnClickListener {
             launchSelectedAppOnVirtualDisplay()
+        }
+
+        findViewById<Button>(R.id.testTap).setOnClickListener {
+            sendTestTap()
+        }
+
+        findViewById<Button>(R.id.testLongPress).setOnClickListener {
+            sendTestLongPress()
+        }
+
+        findViewById<Button>(R.id.releaseVirtualDisplay).setOnClickListener {
+            releaseCurrentDisplay()
         }
 
         refreshStatus()
@@ -108,6 +129,9 @@ class MainActivity : AppCompatActivity() {
             val ok = withContext(Dispatchers.IO) {
                 VirtualDisplayManager.launch(pkg, displayId)
             }
+            if (ok) {
+                currentDisplayId = displayId
+            }
             virtualDisplayStatus.text = if (ok) {
                 "已在虚拟屏 #$displayId 启动 $pkg，切回桌面看看它是否还在后台跑"
             } else {
@@ -116,6 +140,73 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun readInputInt(editText: android.widget.EditText, defaultValue: Int): Int {
+        return editText.text.toString().trim().toIntOrNull() ?: defaultValue
+    }
+
+    private fun sendTestTap() {
+        val displayId = currentDisplayId
+        if (displayId < 0) {
+            inputTestStatus.text = "请先成功启动一个虚拟屏应用"
+            return
+        }
+
+        val x = readInputInt(inputX, 540)
+        val y = readInputInt(inputY, 960)
+
+        lifecycleScope.launch {
+            inputTestStatus.text = "正在发送点击：display=$displayId ($x,$y)…"
+            val ok = withContext(Dispatchers.IO) {
+                VirtualDisplayManager.tap(displayId, x.toFloat(), y.toFloat())
+            }
+            inputTestStatus.text = if (ok) {
+                "点击发送成功：display=$displayId ($x,$y)"
+            } else {
+                "点击发送失败，查看日志目录"
+            }
+        }
+    }
+
+    private fun sendTestLongPress() {
+        val displayId = currentDisplayId
+        if (displayId < 0) {
+            inputTestStatus.text = "请先成功启动一个虚拟屏应用"
+            return
+        }
+
+        val x = readInputInt(inputX, 540)
+        val y = readInputInt(inputY, 960)
+        val duration = readInputInt(inputDuration, 1000).coerceIn(1, 30000)
+
+        lifecycleScope.launch {
+            inputTestStatus.text = "正在发送长按：display=$displayId ($x,$y) ${duration}ms…"
+            val ok = withContext(Dispatchers.IO) {
+                VirtualDisplayManager.longPress(displayId, x.toFloat(), y.toFloat(), duration)
+            }
+            inputTestStatus.text = if (ok) {
+                "长按发送成功：display=$displayId ($x,$y) ${duration}ms"
+            } else {
+                "长按发送失败，查看日志目录"
+            }
+        }
+    }
+
+    private fun releaseCurrentDisplay() {
+        val displayId = currentDisplayId
+        if (displayId < 0) {
+            inputTestStatus.text = "当前没有受 VirtualClicker 管理的虚拟屏"
+            return
+        }
+
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                VirtualDisplayManager.release(displayId)
+            }
+            currentDisplayId = -1
+            virtualDisplayStatus.text = "已释放虚拟屏 #$displayId"
+            inputTestStatus.text = "虚拟屏已释放"
+        }
+    }
     private val appPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
