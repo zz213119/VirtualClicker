@@ -109,16 +109,26 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     override fun launchAppExplicit(packageName: String, activityName: String, displayId: Int): Boolean {
         return try {
+            // resolveLaunchActivity() may already return a fully-qualified
+            // component such as com.example.app/.MainActivity. Avoid
+            // accidentally prefixing the package twice.
+            val component = if (activityName.startsWith("$packageName/")) {
+                activityName
+            } else {
+                "$packageName/$activityName"
+            }
+
             val cmd = arrayOf(
                 "am", "start",
                 "--display", displayId.toString(),
-                "-n", "$packageName/$activityName"
+                "-n", component
             )
             val proc = ProcessBuilder(*cmd).redirectErrorStream(true).start()
             val output = proc.inputStream.bufferedReader().readText()
             val exit = proc.waitFor()
 
             val commandText = cmd.joinToString(" ")
+            Log.i(TAG, "resolved activity=$activityName component=$component")
             Log.i(TAG, "am start exit=$exit output=$output")
             appendLog(
                 "AM START",
