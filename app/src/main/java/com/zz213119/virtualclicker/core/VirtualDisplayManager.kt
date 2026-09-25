@@ -85,6 +85,18 @@ object VirtualDisplayManager {
             .onFailure { Log.e(TAG, "createDisplayWithSurface failed", it) }
             .getOrDefault(-1)
 
+    /**
+     * Detach/reattach the rendering surface without destroying the virtual
+     * display. Passing null intentionally leaves the display alive but with
+     * no preview surface.
+     */
+    fun setDisplaySurface(displayId: Int, surface: android.view.Surface?): Boolean =
+        runCatching {
+            service?.setVirtualDisplaySurface(displayId, surface) ?: false
+        }
+            .onFailure { Log.e(TAG, "setDisplaySurface failed", it) }
+            .getOrDefault(false)
+
     fun launch(packageName: String, displayId: Int): Boolean =
         runCatching { service?.launchApp(packageName, displayId) ?: false }
             .onFailure { Log.e(TAG, "launch failed", it) }
