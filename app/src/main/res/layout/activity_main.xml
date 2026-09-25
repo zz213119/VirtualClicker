@@ -144,12 +144,21 @@
                 android:visibility="gone" />
         </FrameLayout>
 
-        <Button
-            android:id="@+id/toggleAspectRatio"
+        <TextView
+            android:id="@+id/resolutionLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="虚拟屏分辨率"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/resolutionSpinner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="切换为 4:3" />
+            android:layout_marginTop="4dp"
+            android:spinnerMode="dropdown" />
 
         <TextView
             android:id="@+id/manualControlHint"
@@ -241,6 +250,82 @@
                 android:hint="长按(ms)"
                 android:inputType="number" />
         </LinearLayout>
+
+
+        <TextView
+            android:id="@+id/autoClickTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="连点器"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/autoClickHelp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="使用上面的 X/Y 作为点击坐标；间隔为两次点击之间的等待时间；次数填 0 表示无限点击。"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/autoClickRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/autoClickInterval"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="间隔(ms)"
+                android:inputType="number"
+                android:text="500" />
+
+            <EditText
+                android:id="@+id/autoClickCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:hint="次数(0=无限)"
+                android:inputType="number"
+                android:text="0" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/autoClickButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/startAutoClick"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="开始连点" />
+
+            <Button
+                android:id="@+id/stopAutoClick"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="停止连点" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/autoClickStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="连点器：未运行"
+            android:textSize="14sp" />
 
         <Button
             android:id="@+id/testTap"
