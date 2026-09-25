@@ -62,6 +62,45 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         return createDisplayInternal(name, width, height, dpi, surface)
     }
 
+    override fun setVirtualDisplaySurface(
+        displayId: Int,
+        surface: android.view.Surface?
+    ): Boolean {
+        val vd = displays[displayId]
+        if (vd == null) {
+            Log.w(TAG, "setVirtualDisplaySurface rejected: displayId=${displayId} is not managed")
+            appendLog(
+                "SET SURFACE REJECTED",
+                "displayId=${displayId}\\nreason=display_not_managed"
+            )
+            return false
+        }
+
+        if (surface != null && !surface.isValid) {
+            Log.w(TAG, "setVirtualDisplaySurface rejected: invalid surface displayId=${displayId}")
+            appendLog(
+                "SET SURFACE REJECTED",
+                "displayId=${displayId}\\nreason=invalid_surface"
+            )
+            return false
+        }
+
+        return runCatching {
+            vd.setSurface(surface)
+            appendLog(
+                "SET SURFACE",
+                "displayId=${displayId}\\naction=${if (surface == null) "detach" else "attach"}"
+            )
+            true
+        }.onFailure {
+            Log.e(TAG, "setVirtualDisplaySurface failed for displayId=${displayId}", it)
+            appendLog(
+                "SET SURFACE FAILED",
+                "displayId=${displayId}\\n${it.stackTraceToString()}"
+            )
+        }.getOrDefault(false)
+    }
+
     private fun createDisplayInternal(
         name: String,
         width: Int,
