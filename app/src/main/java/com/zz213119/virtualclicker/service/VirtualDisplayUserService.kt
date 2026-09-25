@@ -8,7 +8,10 @@ import android.media.ImageReader
 import android.os.Process
 import android.os.Build
 import android.util.Log
-import java.lang.reflect.Method
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Shizuku UserService target. Runs in its own process with shell UID
@@ -98,10 +101,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             val proc = ProcessBuilder(*cmd).redirectErrorStream(true).start()
             val output = proc.inputStream.bufferedReader().readText()
             val exit = proc.waitFor()
+
+            val commandText = cmd.joinToString(" ")
             Log.i(TAG, "am start exit=$exit output=$output")
+            appendLog(
+                "AM START",
+                "command=$commandText\nexit=$exit\noutput=$output"
+            )
+
             // `am start` can exit 0 even on some failures (e.g. permission
             // denied warnings); treat an explicit Error: line as failure too.
-            exit == 0 && !output.contains("Error:")
+            exit == 0 && !output.contains("Error:", ignoreCase = true)
         } catch (e: Throwable) {
             Log.e(TAG, "launchAppExplicit failed", e)
             false
@@ -172,7 +182,13 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 "cmd", "package", "resolve-activity", "--brief", packageName
             ).redirectErrorStream(true).start()
             val output = proc.inputStream.bufferedReader().readText()
-            proc.waitFor()
+            val exit = proc.waitFor()
+
+            appendLog(
+                "RESOLVE ACTIVITY",
+                "package=$packageName\nexit=$exit\noutput=$output"
+            )
+
             output.lines()
                 .map { it.trim() }
                 .lastOrNull { it.startsWith("$packageName/") }
@@ -182,6 +198,37 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }
     }
 
+    /**
+     * Persistent diagnostic output for the app's Shizuku backend.
+     *
+     * Shell/UserService writes here so the user can retrieve the complete
+     * command output without opening Logcat. Logcat is still emitted in
+     * parallel for development.
+     */
+    private fun appendLog(section: String, body: String) {
+        runCatching {
+            val dir = File(
+                "/storage/emulated/0/Android/data/",
+                "$APP_PACKAGE/files/logs"
+            )
+            if (!dir.exists() && !dir.mkdirs() && !dir.exists()) {
+                throw IllegalStateException("cannot create log directory: " + dir.absolutePath)
+            }
+
+            val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val file = File(dir, "virtualclicker-$date.log")
+            val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+
+            file.appendText(
+                "\n[$time] [$section]\n$body\n",
+                Charsets.UTF_8
+            )
+
+            Log.i(TAG, "persistent log: " + file.absolutePath)
+        }.onFailure {
+            Log.e(TAG, "failed to write persistent log", it)
+        }
+    }
     private fun systemContext(): Context {
         val activityThreadClass = Class.forName("android.app.ActivityThread")
         val systemMain: Method = activityThreadClass.getMethod("systemMain")
@@ -192,5 +239,6 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     companion object {
         private const val TAG = "VDUserService"
+        private const val APP_PACKAGE = "com.zz213119.virtualclicker"
     }
 }
