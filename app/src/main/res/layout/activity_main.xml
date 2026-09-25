@@ -328,6 +328,21 @@
             android:textSize="14sp" />
 
         <Button
+            android:id="@+id/pickCoordinate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="取点坐标（点击预览获取 X/Y）" />
+
+        <TextView
+            android:id="@+id/pickCoordinateStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="取点模式：未开启"
+            android:textSize="13sp" />
+
+        <Button
             android:id="@+id/testTap"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
