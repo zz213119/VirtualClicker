@@ -12,6 +12,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.lang.reflect.Method
 
 /**
@@ -26,8 +27,10 @@ import java.lang.reflect.Method
  */
 class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
-    private val displays = mutableMapOf<Int, VirtualDisplay>()
-    private val sinks = mutableMapOf<Int, ImageReader>()
+    // Binder callbacks may arrive concurrently. Use thread-safe maps so a
+    // release racing with an input call cannot corrupt the service state.
+    private val displays = ConcurrentHashMap<Int, VirtualDisplay>()
+    private val sinks = ConcurrentHashMap<Int, ImageReader>()
     private val inputEngine = InputEngine()
 
     private val displayManager: DisplayManager by lazy {
@@ -102,6 +105,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     "flags=0x${flags.toString(16)}"
             )
 
+            if (!surface.isValid) {
+                throw IllegalArgumentException("surface is invalid before createVirtualDisplay")
+            }
+
             val vd = displayManager.createVirtualDisplay(
                 name, width, height, dpi, surface, flags
             )
@@ -171,9 +178,96 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     override fun releaseVirtualDisplay(displayId: Int) {
-        displays.remove(displayId)?.release()
-        sinks.remove(displayId)?.close()
-        Log.i(TAG, "released virtual display id=$displayId")
+        cleanupDisplay(displayId, "explicit_release")
+    }
+
+    /**
+     * VirtualDisplay owns a Surface connection into SurfaceFlinger. Detach
+     * that surface first, then release the VirtualDisplay, then close any
+     * internal ImageReader sink. Removing the map entry first also prevents
+     * new input calls from racing with a release.
+     */
+    private fun cleanupDisplay(displayId: Int, reason: String) {
+        val vd = displays.remove(displayId)
+        val sink = sinks.remove(displayId)
+
+        if (vd == null && sink == null) {
+            Log.i(TAG, "cleanupDisplay: displayId=${displayId} already clean reason=${reason}")
+            appendLog(
+                "RELEASE DISPLAY",
+                "displayId=${displayId}\\nreason=${reason}\\nalready_clean=true"
+            )
+            return
+        }
+
+        appendLog(
+            "RELEASE DISPLAY",
+            "displayId=${displayId}\\nreason=${reason}\\n" +
+                "hadVirtualDisplay=${vd != null}\\nhadImageReader=${sink != null}"
+        )
+
+        if (vd != null) {
+            runCatching {
+                vd.setSurface(null)
+            }.onFailure {
+                Log.w(TAG, "setSurface(null) failed for displayId=${displayId}", it)
+                appendLog("RELEASE SET_SURFACE_FAILED", "displayId=${displayId}\\n${it.stackTraceToString()}")
+            }
+
+            runCatching {
+                vd.release()
+            }.onFailure {
+                Log.e(TAG, "VirtualDisplay.release failed for displayId=${displayId}", it)
+                appendLog("RELEASE FAILED", "displayId=${displayId}\\n${it.stackTraceToString()}")
+            }
+        }
+
+        // The ImageReader must stay alive until the VirtualDisplay is detached.
+        if (sink != null) {
+            runCatching { sink.close() }
+                .onFailure {
+                    Log.w(TAG, "ImageReader.close failed for displayId=${displayId}", it)
+                }
+        }
+
+        verifyDisplayReleased(displayId)
+    }
+
+    /**
+     * VirtualDisplay release is asynchronous from the framework's point of
+     * view. Poll briefly so the persistent log tells us whether the display
+     * has actually disappeared from DisplayManager.
+     */
+    private fun verifyDisplayReleased(displayId: Int) {
+        repeat(10) { attempt ->
+            val stillPresent = runCatching {
+                displayManager.getDisplay(displayId) != null
+            }.getOrDefault(false)
+
+            if (!stillPresent) {
+                Log.i(TAG, "displayId=${displayId} fully released after ${attempt * 50}ms")
+                appendLog(
+                    "RELEASE DISPLAY SUCCESS",
+                    "displayId=${displayId}\\nwaitMs=${attempt * 50}"
+                )
+                return
+            }
+
+            if (attempt < 9) {
+                try {
+                    Thread.sleep(50)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
+            }
+        }
+
+        Log.w(TAG, "displayId=${displayId} still visible after release wait")
+        appendLog(
+            "RELEASE DISPLAY STILL_VISIBLE",
+            "displayId=${displayId}\\nwaitMs=500"
+        )
     }
 
     override fun tap(displayId: Int, x: Float, y: Float): Boolean {
@@ -224,8 +318,8 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     override fun destroy() {
-        displays.values.forEach { it.release() }
-        sinks.values.forEach { it.close() }
+        val ids = (displays.keys + sinks.keys).toSet()
+        ids.forEach { cleanupDisplay(it, "user_service_destroy") }
         displays.clear()
         sinks.clear()
         Log.i(TAG, "VirtualDisplayUserService destroyed")
