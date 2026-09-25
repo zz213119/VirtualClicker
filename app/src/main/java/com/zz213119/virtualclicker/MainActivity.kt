@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -32,6 +33,9 @@ class MainActivity : AppCompatActivity() {
     private var currentDisplayId: Int = -1
     private lateinit var previewSurfaceView: SurfaceView
     private var previewSurface: Surface? = null
+    private lateinit var previewPlaceholder: TextView
+    private lateinit var statusDot: View
+    private lateinit var statusBadgeText: TextView
 
     // 预览用固定分辨率，要跟 createDisplay 调用里传的 width/height 保持一致，
     // 否则虚拟屏渲染出来的画面跟 SurfaceView 缓冲区大小对不上，会被裁切/拉伸。
@@ -60,6 +64,9 @@ class MainActivity : AppCompatActivity() {
         inputY = findViewById(R.id.inputY)
         inputDuration = findViewById(R.id.inputDuration)
         previewSurfaceView = findViewById(R.id.virtualDisplaySurface)
+        previewPlaceholder = findViewById(R.id.previewPlaceholder)
+        statusDot = findViewById(R.id.statusDot)
+        statusBadgeText = findViewById(R.id.statusBadgeText)
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -124,6 +131,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         refreshStatus()
+        setPreviewRunning(false)
+    }
+
+    private fun setPreviewRunning(running: Boolean) {
+        previewPlaceholder.visibility = if (running) View.GONE else View.VISIBLE
+        statusDot.setBackgroundResource(
+            if (running) R.drawable.dot_running else R.drawable.dot_idle
+        )
+        statusBadgeText.text = if (running) "运行中" else "待机"
     }
 
     /**
@@ -170,6 +186,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (ok) {
                 currentDisplayId = displayId
+                setPreviewRunning(true)
             }
             virtualDisplayStatus.text = if (ok) {
                 "已在虚拟屏 #$displayId 启动 $pkg，切回桌面看看它是否还在后台跑"
@@ -242,6 +259,7 @@ class MainActivity : AppCompatActivity() {
                 VirtualDisplayManager.release(displayId)
             }
             currentDisplayId = -1
+            setPreviewRunning(false)
             virtualDisplayStatus.text = "已释放虚拟屏 #$displayId"
             inputTestStatus.text = "虚拟屏已释放"
         }

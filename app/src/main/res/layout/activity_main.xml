@@ -80,15 +80,55 @@
             android:textStyle="bold" />
 
         <FrameLayout
+            android:id="@+id/previewContainer"
             android:layout_width="match_parent"
             android:layout_height="420dp"
             android:layout_marginTop="8dp"
-            android:background="#000000">
+            android:background="@drawable/bg_preview_container"
+            android:clipToOutline="true"
+            android:clipChildren="true">
 
             <SurfaceView
                 android:id="@+id/virtualDisplaySurface"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/previewPlaceholder"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="待执行"
+                android:textColor="#5F6368"
+                android:textSize="16sp" />
+
+            <LinearLayout
+                android:id="@+id/statusBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_margin="12dp"
+                android:background="@drawable/bg_status_badge"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="5dp">
+
+                <View
+                    android:id="@+id/statusDot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@drawable/dot_idle" />
+
+                <TextView
+                    android:id="@+id/statusBadgeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="待机"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
         </FrameLayout>
 
         <Button
