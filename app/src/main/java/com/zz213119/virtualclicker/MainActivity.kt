@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
             virtualDisplayStatus.text = if (ok) {
                 "已在虚拟屏 #$displayId 启动 $pkg，切回桌面看看它是否还在后台跑"
             } else {
-                "启动失败，查看 Logcat tag VDUserService（am start 的输出会打印在里面）"
+                "启动失败，详细输出已保存到 Android/data/com.zz213119.virtualclicker/files/logs/；同时也会写入 Logcat tag VDUserService"
             }
         }
     }
