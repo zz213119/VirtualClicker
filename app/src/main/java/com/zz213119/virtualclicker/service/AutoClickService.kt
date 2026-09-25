@@ -96,7 +96,7 @@ class AutoClickService : Service() {
         clickJob?.cancel()
 
         if (displayId < 0) {
-            Log.w(TAG, "auto click rejected: invalid displayId=$$displayId")
+            Log.w(TAG, "auto click rejected: invalid displayId=$displayId")
             isRunning = false
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -106,8 +106,8 @@ class AutoClickService : Service() {
         isRunning = true
         LogWriter.write(
             "AUTO CLICK START",
-            "displayId=$$displayId\\nx=$$x\\ny=$$y\\n" +
-                "intervalMs=$$intervalMs\\nrepeatCount=$$repeatCount"
+            "displayId=$displayId\\nx=$x\\ny=$y\\n" +
+                "intervalMs=$intervalMs\\nrepeatCount=$repeatCount"
         )
 
         clickJob = serviceScope.launch {
@@ -117,11 +117,11 @@ class AutoClickService : Service() {
                 while (isActive && (repeatCount == 0 || completed < repeatCount)) {
                     val ok = VirtualDisplayManager.tap(displayId, x, y)
                     if (!ok) {
-                        Log.w(TAG, "auto click failed at count=$${completed + 1}")
+                        Log.w(TAG, "auto click failed at count=${completed + 1}")
                         LogWriter.write(
                             "AUTO CLICK FAILED",
-                            "displayId=$$displayId\\nx=$$x\\n" +
-                                "y=$$y\\ncount=$${completed + 1}"
+                            "displayId=$displayId\\nx=$x\\n" +
+                                "y=$y\\ncount=${completed + 1}"
                         )
                         break
                     }
@@ -140,8 +140,8 @@ class AutoClickService : Service() {
             } finally {
                 LogWriter.write(
                     "AUTO CLICK END",
-                    "displayId=$$displayId\\ncompleted=$$completed\\n" +
-                        "repeatCount=$$repeatCount"
+                    "displayId=$displayId\\ncompleted=$completed\\n" +
+                        "repeatCount=$repeatCount"
                 )
                 isRunning = false
                 clickJob = null
@@ -194,7 +194,7 @@ class AutoClickService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("VirtualClicker 连点器运行中")
-            .setContentText("D#$$displayId · ($$x, $$y) · $${intervalMs}ms · $$countText 次")
+            .setContentText("D#$displayId · ($x, $y) · ${intervalMs}ms · $countText 次")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(openApp)
             .addAction(
