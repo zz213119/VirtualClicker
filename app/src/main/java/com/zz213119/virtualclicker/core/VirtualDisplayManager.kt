@@ -80,4 +80,27 @@ object VirtualDisplayManager {
         runCatching { service?.releaseVirtualDisplay(displayId) }
             .onFailure { Log.e(TAG, "release failed", it) }
     }
+
+    fun tap(displayId: Int, x: Float, y: Float): Boolean =
+        runCatching { service?.tap(displayId, x, y) ?: false }
+            .onFailure { Log.e(TAG, "tap failed", it) }
+            .getOrDefault(false)
+
+    fun longPress(displayId: Int, x: Float, y: Float, durationMs: Int): Boolean =
+        runCatching { service?.longPress(displayId, x, y, durationMs) ?: false }
+            .onFailure { Log.e(TAG, "longPress failed", it) }
+            .getOrDefault(false)
+
+    fun swipe(
+        displayId: Int,
+        x1: Float,
+        y1: Float,
+        x2: Float,
+        y2: Float,
+        durationMs: Int
+    ): Boolean =
+        runCatching {
+            service?.swipe(displayId, x1, y1, x2, y2, durationMs) ?: false
+        }.onFailure { Log.e(TAG, "swipe failed", it) }
+            .getOrDefault(false)
 }
