@@ -52,12 +52,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var manualControlHint: TextView
     private lateinit var previewContainer: View
     private lateinit var fullscreenCloseButton: TextView
-    private var isFullscreen = false
-    private var normalPreviewHeightPx = 0
+
     private var manualControlEnabled = false
     private var touchDownX = 0f
     private var touchDownY = 0f
     private var touchDownTime = 0L
+    // True only for touches that started after manual control was already enabled.
+    // This prevents the second tap of the "double tap to enter" gesture from
+    // accidentally being forwarded to the target app.
+    private var manualTouchActive = false
 
     // Invalidates an in-flight create operation when the user closes/reconfigures
     // the display before the binder call has returned.
@@ -102,8 +105,15 @@ class MainActivity : AppCompatActivity() {
         manualControlHint = findViewById(R.id.manualControlHint)
         previewContainer = findViewById(R.id.previewContainer)
         fullscreenCloseButton = findViewById(R.id.fullscreenCloseButton)
-        normalPreviewHeightPx = previewContainer.layoutParams.height
-        fullscreenCloseButton.setOnClickListener { toggleFullscreenPreview() }
+        fullscreenCloseButton.visibility = View.GONE
+        fullscreenCloseButton.setOnClickListener {
+            manualControlEnabled = false
+            manualTouchActive = false
+            fullscreenCloseButton.visibility = View.GONE
+            manualControlHint.text =
+                "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
+            Toast.makeText(this, "已结束手动控制，虚拟屏仍保持运行", Toast.LENGTH_SHORT).show()
+        }
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -151,22 +161,19 @@ class MainActivity : AppCompatActivity() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                toggleFullscreenPreview()
-                return true
-            }
-
-            override fun onLongPress(e: MotionEvent) {
-                manualControlEnabled = !manualControlEnabled
-                manualControlHint.text = if (manualControlEnabled) {
-                    "手动控制：已开启 —— 直接在画面上点击/滑动操作虚拟屏；再长按关闭"
-                } else {
-                    "长按预览画面：开启/关闭应用内手动控制；双击放大"
+                if (!manualControlEnabled) {
+                    manualControlEnabled = true
+                    manualTouchActive = false
+                    fullscreenCloseButton.visibility = View.VISIBLE
+                    manualControlHint.text =
+                        "手动控制：已开启 —— 可以直接点击/滑动虚拟屏；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
+                    Toast.makeText(
+                        this@MainActivity,
+                        "手动控制已开启",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                Toast.makeText(
-                    this@MainActivity,
-                    if (manualControlEnabled) "手动控制已开启" else "手动控制已关闭",
-                    Toast.LENGTH_SHORT
-                ).show()
+                return true
             }
         })
 
@@ -180,8 +187,28 @@ class MainActivity : AppCompatActivity() {
 
             doubleTapDetector.onTouchEvent(event)
 
-            if (manualControlEnabled) {
-                handleManualTouch(view, event)
+            // A manual touch must have started while manual control was already
+            // enabled. This keeps the gesture that entered control mode from
+            // producing an accidental click in the target app.
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    manualTouchActive = manualControlEnabled
+                    if (manualTouchActive) {
+                        handleManualTouch(view, event)
+                    }
+                }
+                MotionEvent.ACTION_MOVE,
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    if (manualTouchActive) {
+                        handleManualTouch(view, event)
+                    }
+                    if (event.actionMasked == MotionEvent.ACTION_UP ||
+                        event.actionMasked == MotionEvent.ACTION_CANCEL
+                    ) {
+                        manualTouchActive = false
+                    }
+                }
             }
             true
         }
@@ -280,7 +307,7 @@ class MainActivity : AppCompatActivity() {
             pickCoordinateButton.text = "取点坐标（点击预览获取 X/Y）"
             pickCoordinateStatus.text = "取点模式：未开启"
             manualControlHint.text =
-                "双击预览：放大/缩小（放大后点右上角 ✕ 缩回，游戏不会关闭）；长按：应用内手动控制"
+                "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
         }
     }
 
@@ -352,33 +379,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    private fun toggleFullscreenPreview() {
-        isFullscreen = !isFullscreen
-
-        val hideIds = intArrayOf(
-            R.id.title, R.id.subtitle, R.id.shizukuStatus, R.id.shizukuPermission,
-            R.id.bindBackend, R.id.backendStatus, R.id.listApps, R.id.appList,
-            R.id.launchVirtualDisplayLabel, R.id.resolutionLabel, R.id.resolutionSpinner,
-            R.id.manualControlHint, R.id.launchRow, R.id.virtualDisplayStatus, R.id.inputTitle,
-            R.id.inputHelp, R.id.inputRow, R.id.pickCoordinate, R.id.pickCoordinateStatus,
-            R.id.autoClickTitle, R.id.autoClickHelp, R.id.autoClickRow, R.id.autoClickButtons,
-            R.id.autoClickStatus, R.id.testTap,
-            R.id.testLongPress, R.id.releaseVirtualDisplay, R.id.inputTestStatus, R.id.roadmap
-        )
-
-        val lp = previewContainer.layoutParams
-        if (isFullscreen) {
-            lp.height = resources.displayMetrics.heightPixels
-            for (id in hideIds) findViewById<View>(id)?.visibility = View.GONE
-            fullscreenCloseButton.visibility = View.VISIBLE
-        } else {
-            lp.height = normalPreviewHeightPx
-            for (id in hideIds) findViewById<View>(id)?.visibility = View.VISIBLE
-            fullscreenCloseButton.visibility = View.GONE
-        }
-        previewContainer.layoutParams = lp
     }
 
     private data class ResolutionPreset(
