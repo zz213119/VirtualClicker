@@ -132,6 +132,22 @@
         </FrameLayout>
 
         <Button
+            android:id="@+id/toggleAspectRatio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="切换为 4:3" />
+
+        <TextView
+            android:id="@+id/manualControlHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="双击预览画面：开启/关闭手动控制（开启后可直接在画面上点击操作虚拟屏）"
+            android:textSize="12sp"
+            android:textColor="#5F6368" />
+
+        <Button
             android:id="@+id/launchVirtualDisplay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

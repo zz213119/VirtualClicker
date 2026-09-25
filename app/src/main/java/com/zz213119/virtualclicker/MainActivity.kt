@@ -2,6 +2,8 @@ package com.zz213119.virtualclicker
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -36,12 +38,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var previewPlaceholder: TextView
     private lateinit var statusDot: View
     private lateinit var statusBadgeText: TextView
+    private lateinit var manualControlHint: TextView
+    private var manualControlEnabled = false
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var touchDownTime = 0L
 
     // 预览用固定分辨率，要跟 createDisplay 调用里传的 width/height 保持一致，
     // 否则虚拟屏渲染出来的画面跟 SurfaceView 缓冲区大小对不上，会被裁切/拉伸。
-    private val displayWidth = 1080
-    private val displayHeight = 1920
-    private val displayDpi = 320
+    // 改成 var：支持“切换为 4:3”按钮动态调整。
+    private var displayWidth = 1080
+    private var displayHeight = 1920
+    private var displayDpi = 320
+    private var is4x3 = false
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -67,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         previewPlaceholder = findViewById(R.id.previewPlaceholder)
         statusDot = findViewById(R.id.statusDot)
         statusBadgeText = findViewById(R.id.statusBadgeText)
+        manualControlHint = findViewById(R.id.manualControlHint)
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -85,6 +95,38 @@ class MainActivity : AppCompatActivity() {
                 previewSurface = null
             }
         })
+
+        val doubleTapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                manualControlEnabled = !manualControlEnabled
+                manualControlHint.text = if (manualControlEnabled) {
+                    "手动控制：已开启 —— 直接在画面上点击/滑动操作虚拟屏；再双击关闭"
+                } else {
+                    "双击预览画面：开启/关闭手动控制（开启后可直接在画面上点击操作虚拟屏）"
+                }
+                Toast.makeText(
+                    this@MainActivity,
+                    if (manualControlEnabled) "手动控制已开启" else "手动控制已关闭",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return true
+            }
+        })
+
+        previewSurfaceView.setOnTouchListener { view, event ->
+            doubleTapDetector.onTouchEvent(event)
+
+            if (manualControlEnabled) {
+                handleManualTouch(view, event)
+            }
+            true
+        }
+
+        findViewById<Button>(R.id.toggleAspectRatio).setOnClickListener {
+            toggleAspectRatio()
+        }
 
         controller = ShizukuController(packageName)
 
@@ -140,6 +182,77 @@ class MainActivity : AppCompatActivity() {
             if (running) R.drawable.dot_running else R.drawable.dot_idle
         )
         statusBadgeText.text = if (running) "运行中" else "待机"
+    }
+
+    /**
+     * 手动控制：把预览 SurfaceView 上的触摸坐标，按显示比例换算成虚拟屏坐标，
+     * 转发给 VirtualDisplayManager。按下-抬起距离很小当点击，距离大当滑动。
+     */
+    private fun handleManualTouch(view: View, event: MotionEvent) {
+        val displayId = currentDisplayId
+        if (displayId < 0) return
+
+        val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
+        val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
+
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                touchDownX = event.x
+                touchDownY = event.y
+                touchDownTime = System.currentTimeMillis()
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - touchDownX
+                val dy = event.y - touchDownY
+                val distance = kotlin.math.hypot(dx, dy)
+                val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30000)
+
+                val startX = touchDownX * scaleX
+                val startY = touchDownY * scaleY
+
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        if (distance < 24f) {
+                            VirtualDisplayManager.tap(displayId, startX, startY)
+                        } else {
+                            val endX = event.x * scaleX
+                            val endY = event.y * scaleY
+                            VirtualDisplayManager.swipe(
+                                displayId, startX, startY, endX, endY, duration.toInt()
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun toggleAspectRatio() {
+        is4x3 = !is4x3
+        if (is4x3) {
+            displayWidth = 1200
+            displayHeight = 1600
+        } else {
+            displayWidth = 1080
+            displayHeight = 1920
+        }
+        previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+        findViewById<Button>(R.id.toggleAspectRatio).text =
+            if (is4x3) "切换为 16:9" else "切换为 4:3"
+
+        if (currentDisplayId >= 0) {
+            val oldId = currentDisplayId
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldId) }
+                currentDisplayId = -1
+                setPreviewRunning(false)
+                virtualDisplayStatus.text =
+                    "已切换分辨率为 ${displayWidth}x$displayHeight，原虚拟屏已释放，请重新点“启动到虚拟屏”"
+            }
+        } else {
+            virtualDisplayStatus.text = "下次启动将使用 ${displayWidth}x$displayHeight"
+        }
     }
 
     /**
