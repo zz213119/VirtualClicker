@@ -143,7 +143,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="双击预览画面：开启/关闭手动控制（开启后可直接在画面上点击操作虚拟屏）"
+            android:text="双击预览：切到悬浮窗（可拖到桌面，切别的 App 也能继续看/操作）；长按：应用内手动控制"
             android:textSize="12sp"
             android:textColor="#5F6368" />
 
