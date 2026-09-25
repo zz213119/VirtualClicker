@@ -129,6 +129,43 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * out to `cmd package resolve-activity` instead of calling PackageManager
      * directly. Revisit if this proves unreliable on the iQOO build.
      */
+    /**
+     * Use the Android shell package context so DisplayManager/system_server sees
+     * the same package identity as the Shizuku shell process.
+     */
+    private fun createShellContext(): Context {
+        val activityThreadClass = Class.forName("android.app.ActivityThread")
+        val thread = runCatching {
+            activityThreadClass.getDeclaredMethod("currentActivityThread").invoke(null)
+        }.getOrNull() ?: activityThreadClass.getDeclaredMethod("systemMain").invoke(null)
+
+        val base = activityThreadClass
+            .getDeclaredMethod("getSystemContext")
+            .invoke(thread) as Context
+
+        return try {
+            base.createPackageContext(
+                "com.android.shell",
+                Context.CONTEXT_IGNORE_SECURITY
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "createPackageContext(com.android.shell) failed; using wrapper", t)
+            ShellContextWrapper(base)
+        }
+    }
+
+    private class ShellContextWrapper(base: Context) : android.content.ContextWrapper(base) {
+        override fun getPackageName(): String = "com.android.shell"
+        override fun getOpPackageName(): String = "com.android.shell"
+
+        override fun getAttributionSource(): android.content.AttributionSource {
+            return android.content.AttributionSource.Builder(Process.SHELL_UID)
+                .setPackageName("com.android.shell")
+                .build()
+        }
+
+        override fun getApplicationContext(): Context = this
+    }
     private fun resolveLaunchActivity(packageName: String): String? {
         return try {
             val proc = ProcessBuilder(
