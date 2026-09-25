@@ -70,6 +70,21 @@
             android:text=""
             android:textSize="14sp" />
 
+        <Button
+            android:id="@+id/launchVirtualDisplay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="启动到虚拟屏" />
+
+        <TextView
+            android:id="@+id/virtualDisplayStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text=""
+            android:textSize="14sp" />
+
         <TextView
             android:id="@+id/roadmap"
             android:layout_width="match_parent"
