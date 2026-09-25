@@ -12,6 +12,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.lang.reflect.Method
 
 /**
  * Shizuku UserService target. Runs in its own process with shell UID
