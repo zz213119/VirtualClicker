@@ -59,9 +59,8 @@ class MainActivity : AppCompatActivity() {
     // the display before the binder call has returned.
     private var displayOperationGeneration = 0L
 
-    // 预览用固定分辨率，要跟 createDisplay 调用里传的 width/height 保持一致，
-    // 否则虚拟屏渲染出来的画面跟 SurfaceView 缓冲区大小对不上，会被裁切/拉伸。
-    // 改成 var：支持“切换为 4:3”按钮动态调整。
+    // 虚拟屏使用可切换的 16:9 竖屏预设；SurfaceView 缓冲区会同步调整，
+    // 避免虚拟屏输出和预览缓冲区尺寸不一致。
     private var displayWidth = 1080
     private var displayHeight = 1920
     private var displayDpi = 320
@@ -561,8 +560,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val x = readInputInt(inputX, 540)
-        val y = readInputInt(inputY, 960)
+        val x = readInputInt(inputX, displayWidth / 2)
+        val y = readInputInt(inputY, displayHeight / 2)
 
         lifecycleScope.launch {
             inputTestStatus.text = "正在发送点击：display=$displayId ($x,$y)…"
