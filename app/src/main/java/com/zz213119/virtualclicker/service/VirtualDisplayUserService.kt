@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.os.Process
+import android.os.Build
 import android.util.Log
 import java.lang.reflect.Method
 
@@ -25,7 +26,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     private val sinks = mutableMapOf<Int, ImageReader>()
 
     private val displayManager: DisplayManager by lazy {
-        systemContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        createShellContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     }
 
     override fun createVirtualDisplay(name: String, width: Int, height: Int, dpi: Int): Int {
@@ -36,8 +37,32 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // later phase; swap this for a persistent reader + listener then.
             val sink = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
-            val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+            val supportsTouch = 1 shl 6
+            val destroyContentOnRemoval = 1 shl 8
+            val trusted = 1 shl 10
+            val ownDisplayGroup = 1 shl 11
+            val alwaysUnlocked = 1 shl 12
+            val touchFeedbackDisabled = 1 shl 13
+            val ownFocus = 1 shl 14
+            val deviceDisplayGroup = 1 shl 15
+            val stealTopFocusDisabled = 1 shl 16
+
+            var flags =
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION or
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
+                    supportsTouch or
+                    destroyContentOnRemoval or
+                    trusted or
+                    ownDisplayGroup or
+                    alwaysUnlocked or
+                    touchFeedbackDisabled
+
+            if (Build.VERSION.SDK_INT >= 34) {
+                flags = flags or ownFocus or deviceDisplayGroup or stealTopFocusDisabled
+            }
+
+            Log.i(TAG, "creating display with flags=0x" + flags.toString(16))
 
             val vd = displayManager.createVirtualDisplay(
                 name, width, height, dpi, sink.surface, flags
