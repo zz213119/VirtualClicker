@@ -19,6 +19,22 @@ interface IVirtualDisplayService {
     // Releases a display created by this service.
     void releaseVirtualDisplay(int displayId);
 
+    // Sends a single touchscreen tap to the target virtual display.
+    boolean tap(int displayId, float x, float y);
+
+    // Sends a long press by holding a touch point for durationMs.
+    boolean longPress(int displayId, float x, float y, int durationMs);
+
+    // Sends a touchscreen swipe to the target virtual display.
+    boolean swipe(
+        int displayId,
+        float x1,
+        float y1,
+        float x2,
+        float y2,
+        int durationMs
+    );
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }
