@@ -101,12 +101,19 @@ class FullscreenPreviewDialog(
             setPadding(16.dp, 0, 16.dp, 0)
             contentDescription = "切换取点坐标模式"
             setOnClickListener {
-                pointPickMode = !pointPickMode
-                text = if (pointPickMode) "结束取点" else "取点坐标"
-                coordinateHint.text = if (pointPickMode) {
-                    "取点模式：点击画面查看 X / Y"
+                if (onPointPicked != null && pointPickMode) {
+                    // In script-editor coordinate-pick mode, finishing the
+                    // picker returns directly to the editor. Reopening
+                    // "取点坐标" starts a fresh pick for the next action.
+                    dismiss()
                 } else {
-                    "手动控制模式：点击/滑动会发送到目标应用"
+                    pointPickMode = !pointPickMode
+                    text = if (pointPickMode) "结束取点" else "取点坐标"
+                    coordinateHint.text = if (pointPickMode) {
+                        "取点模式：点击画面查看 X / Y"
+                    } else {
+                        "手动控制模式：点击/滑动会发送到目标应用"
+                    }
                 }
             }
         }
