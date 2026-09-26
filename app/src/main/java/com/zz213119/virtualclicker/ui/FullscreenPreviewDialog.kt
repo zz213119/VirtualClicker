@@ -59,6 +59,10 @@ class FullscreenPreviewDialog(
             displayWidth.toFloat() / displayHeight.toFloat()
         )
         val surface = SurfaceView(context)
+        // Match the virtual display buffer exactly. Without this, some OEM
+        // SurfaceView implementations keep the fullscreen window buffer size
+        // and the VirtualDisplay output can be cropped or scaled incorrectly.
+        surface.holder.setFixedSize(displayWidth, displayHeight)
         preview.addView(surface, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -85,6 +89,10 @@ class FullscreenPreviewDialog(
 
         surface.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
+                // Re-assert the exact virtual-display buffer size after SurfaceView
+                // recreation. This prevents half-frame/cropped output on Android 16
+                // OEM implementations.
+                holder.setFixedSize(displayWidth, displayHeight)
                 activity.lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
                         VirtualDisplayManager.setDisplaySurface(displayId, holder.surface)
@@ -92,7 +100,12 @@ class FullscreenPreviewDialog(
                 }
             }
 
-            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+            override fun surfaceChanged(
+                holder: SurfaceHolder,
+                format: Int,
+                width: Int,
+                height: Int
+            ) = Unit
 
             override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
         })
