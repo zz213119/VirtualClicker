@@ -362,6 +362,7 @@ class MainActivity : AppCompatActivity() {
         updateDisplayModeButton()
         val position = resolutionSpinner.selectedItemPosition.coerceIn(0, resolutionPresets.lastIndex)
         val preset = resolutionPresets[position]
+        applySelectedResolutionGeometry(preset)
 
         if (currentDisplayId >= 0) {
             stopAutoClicker()
