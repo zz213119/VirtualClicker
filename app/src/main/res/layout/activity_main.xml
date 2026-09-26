@@ -70,6 +70,13 @@
             android:text=""
             android:textSize="14sp" />
 
+        <Button
+            android:id="@+id/openScriptEditor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="打开脚本编辑器（自动精灵模式）" />
+
         <TextView
             android:id="@+id/launchVirtualDisplayLabel"
             android:layout_width="wrap_content"
