@@ -519,10 +519,11 @@ class MainActivity : AppCompatActivity() {
             displayHeight = displayHeight,
             onClosed = {
                 val surface = previewSurface
-            if (currentDisplayId == displayId && surface?.isValid == true) {
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                if (currentDisplayId == displayId && surface?.isValid == true) {
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                        }
                     }
                 }
             }
