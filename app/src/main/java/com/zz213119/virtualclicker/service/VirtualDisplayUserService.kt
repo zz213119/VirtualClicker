@@ -31,6 +31,14 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     // release racing with an input call cannot corrupt the service state.
     private val displays = ConcurrentHashMap<Int, VirtualDisplay>()
     private val sinks = ConcurrentHashMap<Int, ImageReader>()
+
+    /** One target-app task belongs to one VirtualDisplay session. */
+    private data class DisplaySession(
+        val packageName: String,
+        val taskId: Int
+    )
+
+    private val sessions = ConcurrentHashMap<Int, DisplaySession>()
     private val inputEngine = InputEngine()
 
     private val displayManager: DisplayManager by lazy {
@@ -192,6 +200,9 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             val cmd = arrayOf(
                 "am", "start",
                 "--display", displayId.toString(),
+                "--activity-new-task",
+                "--activity-multiple-task",
+                "-W",
                 "-n", component
             )
             val proc = ProcessBuilder(*cmd).redirectErrorStream(true).start()
@@ -208,7 +219,24 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
             // `am start` can exit 0 even on some failures (e.g. permission
             // denied warnings); treat an explicit Error: line as failure too.
-            exit == 0 && !output.contains("Error:", ignoreCase = true)
+            val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
+            if (ok) {
+                val taskId = findTaskForPackageOnDisplay(packageName, displayId)
+                if (taskId != null) {
+                    sessions[displayId] = DisplaySession(packageName, taskId)
+                    appendLog(
+                        "TASK SESSION CREATED",
+                        "displayId=$displayId\npackage=$packageName\ntaskId=$taskId"
+                    )
+                } else {
+                    Log.w(TAG, "could not resolve launched task for package=$packageName displayId=$displayId")
+                    appendLog(
+                        "TASK SESSION NOT_FOUND",
+                        "displayId=$displayId\npackage=$packageName"
+                    )
+                }
+            }
+            ok
         } catch (e: Throwable) {
             Log.e(TAG, "launchAppExplicit failed", e)
             appendLog("LAUNCH EXCEPTION", e.stackTraceToString())
@@ -227,8 +255,13 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * new input calls from racing with a release.
      */
     private fun cleanupDisplay(displayId: Int, reason: String) {
+        val session = sessions.remove(displayId)
         val vd = displays.remove(displayId)
         val sink = sinks.remove(displayId)
+
+        if (session != null) {
+            removeTask(session.taskId, session.packageName, displayId, reason)
+        }
 
         if (vd == null && sink == null) {
             Log.i(TAG, "cleanupDisplay: displayId=${displayId} already clean reason=${reason}")
@@ -307,6 +340,86 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             "RELEASE DISPLAY STILL_VISIBLE",
             "displayId=${displayId}\\nwaitMs=500"
         )
+    }
+
+    /** Find the task belonging to this package on this exact display. */
+    private fun findTaskForPackageOnDisplay(packageName: String, displayId: Int): Int? {
+        repeat(20) { attempt ->
+            val taskId = runCatching {
+                val atmsClass = Class.forName("android.app.ActivityTaskManager")
+                val getService = atmsClass.getDeclaredMethod("getService")
+                val atms = getService.invoke(null) ?: return@runCatching null
+                val getTasks = atms.javaClass.getMethod("getTasks", Int::class.javaPrimitiveType)
+                val tasks = getTasks.invoke(atms, 100) as? List<*> ?: return@runCatching null
+                tasks.firstNotNullOfOrNull { task ->
+                    if (task == null) return@firstNotNullOfOrNull null
+                    val taskDisplayId = readIntProperty(task, "displayId")
+                        ?: return@firstNotNullOfOrNull null
+                    if (taskDisplayId != displayId) return@firstNotNullOfOrNull null
+                    val baseActivity = readObjectProperty(task, "baseActivity")
+                        ?: readObjectProperty(task, "topActivity")
+                    val taskPackage = if (baseActivity is android.content.ComponentName) {
+                        baseActivity.packageName
+                    } else null
+                    if (taskPackage == packageName) readIntProperty(task, "taskId") else null
+                }
+            }.getOrNull()
+            if (taskId != null && taskId >= 0) {
+                Log.i(TAG, "resolved taskId=$taskId for package=$packageName displayId=$displayId")
+                return taskId
+            }
+            if (attempt < 19) {
+                try { Thread.sleep(100) }
+                catch (_: InterruptedException) { Thread.currentThread().interrupt(); return null }
+            }
+        }
+        return null
+    }
+
+    /** Remove exactly the task owned by this display session. */
+    private fun removeTask(taskId: Int, packageName: String, displayId: Int, reason: String): Boolean {
+        if (taskId < 0) return false
+        val removed = runCatching {
+            val atmsClass = Class.forName("android.app.ActivityTaskManager")
+            val getService = atmsClass.getDeclaredMethod("getService")
+            val atms = getService.invoke(null) ?: return@runCatching false
+            val removeTask = atms.javaClass.getMethod("removeTask", Int::class.javaPrimitiveType)
+            (removeTask.invoke(atms, taskId) as? Boolean) ?: false
+        }.getOrElse {
+            Log.e(TAG, "removeTask failed: taskId=$taskId", it)
+            false
+        }
+        appendLog(
+            "TASK SESSION RELEASE",
+            "displayId=$displayId\npackage=$packageName\ntaskId=$taskId\nreason=$reason\nremoved=$removed"
+        )
+        return removed
+    }
+
+    private fun readIntProperty(target: Any, name: String): Int? {
+        return runCatching {
+            val field = target.javaClass.getField(name)
+            field.getInt(target)
+        }.getOrElse {
+            runCatching {
+                val field = target.javaClass.getDeclaredField(name)
+                field.isAccessible = true
+                field.getInt(target)
+            }.getOrNull()
+        }
+    }
+
+    private fun readObjectProperty(target: Any, name: String): Any? {
+        return runCatching {
+            val field = target.javaClass.getField(name)
+            field.get(target)
+        }.getOrElse {
+            runCatching {
+                val field = target.javaClass.getDeclaredField(name)
+                field.isAccessible = true
+                field.get(target)
+            }.getOrNull()
+        }
     }
 
     override fun tap(displayId: Int, x: Float, y: Float): Boolean {
