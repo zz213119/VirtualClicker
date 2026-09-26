@@ -33,6 +33,10 @@
             android:name=".ui.AppPickerActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.ScriptEditorActivity"
+            android:exported="false" />
+
         <service
             android:name=".shizuku.BackendUserService"
             android:exported="false" />
@@ -44,6 +48,15 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="auto_clicker" />
+        </service>
+
+        <service
+            android:name=".service.ScriptRunnerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="script_runner" />
         </service>
 
         <service
