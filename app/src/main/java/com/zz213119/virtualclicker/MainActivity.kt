@@ -1,6 +1,8 @@
 package com.zz213119.virtualclicker
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -24,6 +26,7 @@ import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
+import com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
 import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
@@ -51,15 +54,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusDot: View
     private lateinit var statusBadgeText: TextView
     private lateinit var manualControlHint: TextView
+    private lateinit var previewContainer: AspectRatioFrameLayout
+    private lateinit var resolutionInfo: TextView
     // Invalidates an in-flight create operation when the user closes/reconfigures
     // the display before the binder call has returned.
     private var displayOperationGeneration = 0L
 
-    // 虚拟屏使用可切换的 16:9 竖屏预设；SurfaceView 缓冲区会同步调整，
-    // 避免虚拟屏输出和预览缓冲区尺寸不一致。
+    // 480p/720p/1080p 表示短边质量。实际宽高根据目标应用自动识别
+    // 为横屏或竖屏，并同步调整 SurfaceView 缓冲区和预览容器比例。
     private var displayWidth = 1080
     private var displayHeight = 1920
     private var displayDpi = 320
+    private var displayLandscape = false
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -92,6 +98,9 @@ class MainActivity : AppCompatActivity() {
         statusDot = findViewById(R.id.statusDot)
         statusBadgeText = findViewById(R.id.statusBadgeText)
         manualControlHint = findViewById(R.id.manualControlHint)
+        previewContainer = findViewById(R.id.previewContainer)
+        resolutionInfo = findViewById(R.id.resolutionInfo)
+        previewContainer.setAspectRatio(displayWidth, displayHeight)
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -307,15 +316,15 @@ class MainActivity : AppCompatActivity() {
 
     private data class ResolutionPreset(
         val label: String,
-        val width: Int,
-        val height: Int,
+        val shortEdge: Int,
+        val longEdge: Int,
         val dpi: Int
     )
 
     private val resolutionPresets = listOf(
-        ResolutionPreset("480p（480×854）", 480, 854, 160),
-        ResolutionPreset("720p（720×1280）", 720, 1280, 240),
-        ResolutionPreset("1080p（1080×1920）", 1080, 1920, 320)
+        ResolutionPreset("480p", 480, 854, 160),
+        ResolutionPreset("720p", 720, 1280, 240),
+        ResolutionPreset("1080p", 1080, 1920, 320)
     )
 
     private fun setupResolutionSpinner() {
@@ -329,7 +338,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         resolutionSpinner.setSelection(2, false)
-
         resolutionSpinner.onItemSelectedListener =
             object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -343,20 +351,27 @@ class MainActivity : AppCompatActivity() {
                     applyResolution(resolutionPresets[position])
                 }
             }
+
+        updateResolutionInfo()
     }
 
     private fun applyResolution(preset: ResolutionPreset) {
+        val newWidth = if (displayLandscape) preset.longEdge else preset.shortEdge
+        val newHeight = if (displayLandscape) preset.shortEdge else preset.longEdge
+
         if (
-            displayWidth == preset.width &&
-            displayHeight == preset.height &&
+            displayWidth == newWidth &&
+            displayHeight == newHeight &&
             displayDpi == preset.dpi
         ) {
             previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            updateResolutionInfo()
             return
         }
 
-        displayWidth = preset.width
-        displayHeight = preset.height
+        displayWidth = newWidth
+        displayHeight = newHeight
         displayDpi = preset.dpi
         displayOperationGeneration++
 
@@ -369,23 +384,88 @@ class MainActivity : AppCompatActivity() {
         if (oldDisplayId >= 0) {
             val operation = displayOperationGeneration
             virtualDisplayStatus.text =
-                "正在切换到 ${preset.label}，先释放当前虚拟屏…"
+                "正在切换到 ${preset.label}${orientationLabel()}，先释放当前虚拟屏…"
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) {
                     VirtualDisplayManager.release(oldDisplayId)
                 }
                 if (operation != displayOperationGeneration) return@launch
                 previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+                previewContainer.setAspectRatio(displayWidth, displayHeight)
+                updateResolutionInfo()
                 virtualDisplayStatus.text =
-                    "已切换为 ${preset.label}，请重新点“启动到虚拟屏”"
+                    "已切换为 ${preset.label}${orientationLabel()}，请重新点“启动到虚拟屏”"
             }
         } else {
             previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
-            virtualDisplayStatus.text = "下次启动将使用 ${preset.label}"
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            updateResolutionInfo()
+            virtualDisplayStatus.text =
+                "下次启动将使用 ${preset.label}${orientationLabel()}"
         }
     }
 
-    private fun startAutoClicker() {
+    private fun orientationLabel(): String =
+        if (displayLandscape) " · 横屏" else " · 竖屏"
+
+    private fun updateResolutionInfo() {
+        if (!::resolutionSpinner.isInitialized || !::resolutionInfo.isInitialized) return
+        val position = resolutionSpinner.selectedItemPosition
+            .coerceIn(0, resolutionPresets.lastIndex)
+        val preset = resolutionPresets[position]
+        resolutionInfo.text =
+            "当前：${preset.label}（${displayWidth}×${displayHeight}）${orientationLabel()} · 自动识别目标应用方向"
+        previewContainer.setAspectRatio(displayWidth, displayHeight)
+    }
+
+    /**
+     * Reads the launcher Activity's requested orientation. Fixed landscape/
+     * portrait and their sensor/user variants are unambiguous. For apps that
+     * do not declare a fixed direction, the current orientation is retained.
+     */
+    private fun detectTargetLandscape(packageName: String): Boolean? {
+        return runCatching {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+                ?: return@runCatching null
+            val component = intent.component ?: return@runCatching null
+            val info = packageManager.getActivityInfo(component, PackageManager.MATCH_DEFAULT_ONLY)
+
+            when (info.screenOrientation) {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+                ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
+                ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE -> true
+
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT,
+                ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
+                ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT -> false
+
+                else -> null
+            }
+        }.getOrNull()
+    }
+
+    private fun applyDetectedOrientation(packageName: String) {
+        val landscape = detectTargetLandscape(packageName)
+        if (landscape == null) {
+            resolutionInfo.text =
+                "当前：${displayWidth}×${displayHeight}${orientationLabel()} · 未检测到固定方向，保持当前方向"
+            return
+        }
+
+        if (displayLandscape != landscape) {
+            displayLandscape = landscape
+            val position = resolutionSpinner.selectedItemPosition
+                .coerceIn(0, resolutionPresets.lastIndex)
+            applyResolution(resolutionPresets[position])
+        } else {
+            updateResolutionInfo()
+        }
+    }
+
+    /**
+     * Phase 1 验证链路icker() {
         val displayId = currentDisplayId
         if (displayId < 0) {
             autoClickStatus.text = "连点器：请先启动虚拟屏"
@@ -467,6 +547,25 @@ class MainActivity : AppCompatActivity() {
         val operation = ++displayOperationGeneration
 
         lifecycleScope.launch {
+            // Detect the target launch Activity before creating the display.
+            // Landscape apps such as games therefore receive a landscape
+            // Virtual Display and no longer get a giant portrait black area.
+            val detectedLandscape = withContext(Dispatchers.Default) {
+                detectTargetLandscape(pkg)
+            }
+            if (detectedLandscape != null) {
+                displayLandscape = detectedLandscape
+            }
+            val position = resolutionSpinner.selectedItemPosition
+                .coerceIn(0, resolutionPresets.lastIndex)
+            val preset = resolutionPresets[position]
+            displayWidth = if (displayLandscape) preset.longEdge else preset.shortEdge
+            displayHeight = if (displayLandscape) preset.shortEdge else preset.longEdge
+            displayDpi = preset.dpi
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            updateResolutionInfo()
+
             virtualDisplayStatus.text = "连接虚拟屏后端…"
 
             val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
@@ -625,6 +724,9 @@ class MainActivity : AppCompatActivity() {
             val pkg = result.data?.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME)
             selectedPackageName = pkg
             appList.text = if (pkg != null) "已选择：$label\n$pkg" else ""
+            if (pkg != null && currentDisplayId < 0) {
+                applyDetectedOrientation(pkg)
+            }
         }
     }
 
