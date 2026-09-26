@@ -27,7 +27,6 @@ import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
 import com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
-import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -56,6 +55,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var manualControlHint: TextView
     private lateinit var previewContainer: AspectRatioFrameLayout
     private lateinit var resolutionInfo: TextView
+    private lateinit var displayModeButton: Button
+    private lateinit var fullscreenCloseButton: TextView
+    private var manualControlEnabled = false
+    private var manualTouchActive = false
     // Invalidates an in-flight create operation when the user closes/reconfigures
     // the display before the binder call has returned.
     private var displayOperationGeneration = 0L
@@ -66,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private var displayHeight = 1920
     private var displayDpi = 320
     private var displayLandscape = false
+    private var gameMode = false
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -100,6 +104,17 @@ class MainActivity : AppCompatActivity() {
         manualControlHint = findViewById(R.id.manualControlHint)
         previewContainer = findViewById(R.id.previewContainer)
         resolutionInfo = findViewById(R.id.resolutionInfo)
+        displayModeButton = findViewById(R.id.displayModeButton)
+        fullscreenCloseButton = findViewById(R.id.fullscreenCloseButton)
+        fullscreenCloseButton.visibility = View.GONE
+        displayModeButton.setOnClickListener { toggleGameMode() }
+        fullscreenCloseButton.setOnClickListener {
+            manualControlEnabled = false
+            manualTouchActive = false
+            fullscreenCloseButton.visibility = View.GONE
+            manualControlHint.text = "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
+            Toast.makeText(this, "已结束手动控制，虚拟屏仍保持运行", Toast.LENGTH_SHORT).show()
+        }
         previewContainer.setAspectRatio(displayWidth, displayHeight)
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
@@ -148,14 +163,19 @@ class MainActivity : AppCompatActivity() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                openFullscreenPreview()
+                if (!manualControlEnabled) {
+                    manualControlEnabled = true
+                    manualTouchActive = false
+                    fullscreenCloseButton.visibility = View.VISIBLE
+                    manualControlHint.text =
+                        "手动控制：已开启 —— 直接点击/滑动操作虚拟屏；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
+                    Toast.makeText(this@MainActivity, "手动控制已开启", Toast.LENGTH_SHORT).show()
+                }
                 return true
             }
         })
 
         previewSurfaceView.setOnTouchListener { view, event ->
-            // Coordinate-picking mode has priority over manual control. In this
-            // mode touches only calculate/fill X/Y and never reach the target app.
             if (pointPickMode) {
                 handleCoordinatePick(view, event)
                 return@setOnTouchListener true
@@ -163,8 +183,19 @@ class MainActivity : AppCompatActivity() {
 
             doubleTapDetector.onTouchEvent(event)
 
-            // Main-screen preview remains read-only. Manual input belongs to
-            // the immersive preview opened by a double tap.
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    manualTouchActive = manualControlEnabled
+                    if (manualTouchActive) handleManualTouch(view, event)
+                }
+                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (manualTouchActive) handleManualTouch(view, event)
+                    if (event.actionMasked == MotionEvent.ACTION_UP ||
+                        event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                        manualTouchActive = false
+                    }
+                }
+            }
             true
         }
 
@@ -242,30 +273,6 @@ class MainActivity : AppCompatActivity() {
         statusBadgeText.text = if (running) "运行中" else "待机"
     }
 
-    private fun openFullscreenPreview() {
-        val displayId = currentDisplayId
-        if (displayId < 0) {
-            Toast.makeText(this, "请先启动虚拟屏应用", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        FullscreenPreviewDialog(
-            activity = this,
-            displayId = displayId,
-            displayWidth = displayWidth,
-            displayHeight = displayHeight
-        ) {
-            val surface = previewSurface
-            if (currentDisplayId == displayId && surface?.isValid == true) {
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        VirtualDisplayManager.setDisplaySurface(displayId, surface)
-                    }
-                }
-            }
-        }.show()
-    }
-
     /** Updates the main-preview hint while coordinate-picking is active. */
     private fun setPointPickMode(enabled: Boolean) {
         pointPickMode = enabled
@@ -330,18 +337,14 @@ class MainActivity : AppCompatActivity() {
     private fun setupResolutionSpinner() {
         val labels = resolutionPresets.map { it.label }
         resolutionSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_item,
-            labels
+            this, android.R.layout.simple_spinner_item, labels
         ).also {
             it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         }
-
         resolutionSpinner.setSelection(2, false)
         resolutionSpinner.onItemSelectedListener =
             object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-
                 override fun onItemSelected(
                     parent: android.widget.AdapterView<*>?,
                     view: View?,
@@ -351,32 +354,75 @@ class MainActivity : AppCompatActivity() {
                     applyResolution(resolutionPresets[position])
                 }
             }
-
         updateResolutionInfo()
     }
 
-    private fun applyResolution(preset: ResolutionPreset) {
-        val newWidth = if (displayLandscape) preset.longEdge else preset.shortEdge
-        val newHeight = if (displayLandscape) preset.shortEdge else preset.longEdge
+    private fun toggleGameMode() {
+        gameMode = !gameMode
+        updateDisplayModeButton()
+        val position = resolutionSpinner.selectedItemPosition.coerceIn(0, resolutionPresets.lastIndex)
+        val preset = resolutionPresets[position]
 
-        if (
-            displayWidth == newWidth &&
-            displayHeight == newHeight &&
-            displayDpi == preset.dpi
-        ) {
+        if (currentDisplayId >= 0) {
+            stopAutoClicker()
+            val oldDisplayId = currentDisplayId
+            currentDisplayId = -1
+            setPreviewRunning(false)
+            displayOperationGeneration++
+            virtualDisplayStatus.text =
+                "正在切换${if (gameMode) "游戏模式（4:3）" else "普通模式（自动比例）"}，先释放当前虚拟屏…"
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldDisplayId) }
+                previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+                previewContainer.setAspectRatio(displayWidth, displayHeight)
+                updateResolutionInfo()
+                virtualDisplayStatus.text =
+                    "已切换到${if (gameMode) "游戏模式（4:3）" else "普通模式"}，请重新点“启动到虚拟屏”"
+            }
+        } else {
+            applySelectedResolutionGeometry(preset)
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            updateResolutionInfo()
+            virtualDisplayStatus.text =
+                "下次启动将使用${if (gameMode) "游戏模式（4:3）" else "普通模式（自动比例）"}"
+        }
+    }
+
+    private fun updateDisplayModeButton() {
+        displayModeButton.text =
+            if (gameMode) "游戏模式：开启（4:3）" else "游戏模式：关闭（自动比例）"
+    }
+
+    private fun applySelectedResolutionGeometry(preset: ResolutionPreset) {
+        if (gameMode) {
+            val short = preset.shortEdge
+            val long = short * 4 / 3
+            displayWidth = if (displayLandscape) long else short
+            displayHeight = if (displayLandscape) short else long
+        } else {
+            displayWidth = if (displayLandscape) preset.longEdge else preset.shortEdge
+            displayHeight = if (displayLandscape) preset.shortEdge else preset.longEdge
+        }
+        displayDpi = preset.dpi
+    }
+
+    private fun applyResolution(preset: ResolutionPreset) {
+        val oldWidth = displayWidth
+        val oldHeight = displayHeight
+        applySelectedResolutionGeometry(preset)
+        val newWidth = displayWidth
+        val newHeight = displayHeight
+
+        if (oldWidth == newWidth && oldHeight == newHeight && displayDpi == preset.dpi) {
             previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
             return
         }
 
-        displayWidth = newWidth
-        displayHeight = newHeight
-        displayDpi = preset.dpi
         displayOperationGeneration++
-
         stopAutoClicker()
-
         val oldDisplayId = currentDisplayId
         currentDisplayId = -1
         setPreviewRunning(false)
@@ -386,9 +432,7 @@ class MainActivity : AppCompatActivity() {
             virtualDisplayStatus.text =
                 "正在切换到 ${preset.label}${orientationLabel()}，先释放当前虚拟屏…"
             lifecycleScope.launch {
-                withContext(Dispatchers.IO) {
-                    VirtualDisplayManager.release(oldDisplayId)
-                }
+                withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldDisplayId) }
                 if (operation != displayOperationGeneration) return@launch
                 previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
                 previewContainer.setAspectRatio(displayWidth, displayHeight)
@@ -405,42 +449,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun orientationLabel(): String =
-        if (displayLandscape) " · 横屏" else " · 竖屏"
+    private fun orientationLabel(): String = if (displayLandscape) " · 横屏" else " · 竖屏"
 
     private fun updateResolutionInfo() {
         if (!::resolutionSpinner.isInitialized || !::resolutionInfo.isInitialized) return
-        val position = resolutionSpinner.selectedItemPosition
-            .coerceIn(0, resolutionPresets.lastIndex)
+        val position = resolutionSpinner.selectedItemPosition.coerceIn(0, resolutionPresets.lastIndex)
         val preset = resolutionPresets[position]
+        val ratioLabel = if (gameMode) "4:3" else "自动比例"
         resolutionInfo.text =
-            "当前：${preset.label}（${displayWidth}×${displayHeight}）${orientationLabel()} · 自动识别目标应用方向"
+            "当前：${preset.label}（${displayWidth}×${displayHeight}）${orientationLabel()} · $ratioLabel"
         previewContainer.setAspectRatio(displayWidth, displayHeight)
     }
 
-    /**
-     * Reads the launcher Activity's requested orientation. Fixed landscape/
-     * portrait and their sensor/user variants are unambiguous. For apps that
-     * do not declare a fixed direction, the current orientation is retained.
-     */
     private fun detectTargetLandscape(packageName: String): Boolean? {
         return runCatching {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
                 ?: return@runCatching null
             val component = intent.component ?: return@runCatching null
             val info = packageManager.getActivityInfo(component, PackageManager.MATCH_DEFAULT_ONLY)
-
             when (info.screenOrientation) {
                 ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
                 ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
                 ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE -> true
-
                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT,
                 ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
                 ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT -> false
-
                 else -> null
             }
         }.getOrNull()
@@ -449,18 +484,69 @@ class MainActivity : AppCompatActivity() {
     private fun applyDetectedOrientation(packageName: String) {
         val landscape = detectTargetLandscape(packageName)
         if (landscape == null) {
-            resolutionInfo.text =
-                "当前：${displayWidth}×${displayHeight}${orientationLabel()} · 未检测到固定方向，保持当前方向"
+            updateResolutionInfo()
             return
         }
-
         if (displayLandscape != landscape) {
             displayLandscape = landscape
-            val position = resolutionSpinner.selectedItemPosition
-                .coerceIn(0, resolutionPresets.lastIndex)
+            val position = resolutionSpinner.selectedItemPosition.coerceIn(0, resolutionPresets.lastIndex)
             applyResolution(resolutionPresets[position])
         } else {
             updateResolutionInfo()
+        }
+    }
+
+    /** Updates the main-preview hint while coordinate-picking is active. */
+    private fun setPointPickMode(enabled: Boolean) {
+        pointPickMode = enabled
+
+        if (enabled) {
+            manualControlHint.text =
+                "取点模式：点击预览画面获取坐标，不会点击目标应用；再次点“结束取点”退出"
+            pickCoordinateButton.text = "结束取点"
+            pickCoordinateStatus.text =
+                "取点模式：已开启 · 当前虚拟屏 ${displayWidth}×${displayHeight}"
+        } else {
+            pickCoordinateButton.text = "取点坐标（点击预览获取 X/Y）"
+            pickCoordinateStatus.text = "取点模式：未开启"
+            manualControlHint.text =
+                "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
+        }
+    }
+
+    private fun handleManualTouch(view: View, event: MotionEvent) {
+        val displayId = currentDisplayId
+        if (displayId < 0) return
+
+        val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
+        val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                touchDownX = event.x
+                touchDownY = event.y
+                touchDownTime = System.currentTimeMillis()
+            }
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - touchDownX
+                val dy = event.y - touchDownY
+                val distance = kotlin.math.hypot(dx, dy)
+                val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30000)
+                val startX = touchDownX * scaleX
+                val startY = touchDownY * scaleY
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        if (distance < 24f) {
+                            VirtualDisplayManager.tap(displayId, startX, startY)
+                        } else {
+                            val endX = event.x * scaleX
+                            val endY = event.y * scaleY
+                            VirtualDisplayManager.swipe(
+                                displayId, startX, startY, endX, endY, duration.toInt()
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -562,9 +648,7 @@ class MainActivity : AppCompatActivity() {
             val position = resolutionSpinner.selectedItemPosition
                 .coerceIn(0, resolutionPresets.lastIndex)
             val preset = resolutionPresets[position]
-            displayWidth = if (displayLandscape) preset.longEdge else preset.shortEdge
-            displayHeight = if (displayLandscape) preset.shortEdge else preset.longEdge
-            displayDpi = preset.dpi
+            applySelectedResolutionGeometry(preset)
             previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
@@ -727,6 +811,7 @@ class MainActivity : AppCompatActivity() {
             val pkg = result.data?.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME)
             selectedPackageName = pkg
             appList.text = if (pkg != null) "已选择：$label\n$pkg" else ""
+            if (pkg != null && currentDisplayId < 0) applyDetectedOrientation(pkg)
             if (pkg != null && currentDisplayId < 0) {
                 applyDetectedOrientation(pkg)
             }
