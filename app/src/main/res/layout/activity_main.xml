@@ -81,8 +81,9 @@
 
         <FrameLayout
             android:id="@+id/previewContainer"
-            android:layout_width="match_parent"
-            android:layout_height="420dp"
+            android:layout_width="240dp"
+            android:layout_height="426dp"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="8dp"
             android:background="@drawable/bg_preview_container"
             android:clipToOutline="true"
@@ -130,18 +131,6 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/fullscreenCloseButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_gravity="top|start"
-                android:layout_margin="12dp"
-                android:background="@drawable/bg_status_badge"
-                android:gravity="center"
-                android:text="✕"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
-                android:visibility="gone" />
         </FrameLayout>
 
         <TextView
@@ -165,7 +154,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="双击预览：放大/缩小（放大后点右上角 ✕ 缩回，游戏不会关闭）；长按：应用内手动控制"
+            android:text="双击预览：打开全屏手动控制；点右上角 ✕ 返回，游戏不会关闭"
             android:textSize="12sp"
             android:textColor="#5F6368" />
 
