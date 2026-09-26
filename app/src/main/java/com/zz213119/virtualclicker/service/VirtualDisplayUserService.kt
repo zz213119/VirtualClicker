@@ -200,7 +200,6 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             val cmd = arrayOf(
                 "am", "start",
                 "--display", displayId.toString(),
-                "--activity-new-task",
                 "--activity-multiple-task",
                 "-W",
                 "-n", component
