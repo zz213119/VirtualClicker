@@ -244,6 +244,8 @@ class MainActivity : AppCompatActivity() {
                     com.zz213119.virtualclicker.ui.ScriptEditorActivity.EXTRA_DISPLAY_ID,
                     currentDisplayId
                 )
+                .putExtra("extra_editor_display_width", displayWidth)
+                .putExtra("extra_editor_display_height", displayHeight)
             startActivity(intent)
         }
 
@@ -833,6 +835,19 @@ class MainActivity : AppCompatActivity() {
     /** 供后续 Phase 1 的 createDisplay+launch 调用链使用。 */
     var selectedPackageName: String? = null
         private set
+
+    override fun onResume() {
+        super.onResume()
+        val displayId = currentDisplayId
+        val surface = previewSurface
+        if (displayId >= 0 && surface?.isValid == true) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                }
+            }
+        }
+    }
 
     override fun onDestroy() {
         // Activity destruction is a real teardown point. Invalidate any
