@@ -279,7 +279,8 @@ class ScriptEditorActivity : AppCompatActivity() {
             onClosed = {
                 updateStatus(
                     if (lastPickedX != null && lastPickedY != null) {
-                        "最近取点：X=" + lastPickedX!!.toInt() + " Y=" + lastPickedY!!.toInt()
+                        "取点结束，当前脚本已有 " + rows.size + " 个动作；最近坐标：" +
+                            lastPickedX!!.toInt() + ", " + lastPickedY!!.toInt()
                     } else {
                         "取点窗口已关闭"
                     }
@@ -289,10 +290,24 @@ class ScriptEditorActivity : AppCompatActivity() {
                 lastPickedX = x
                 lastPickedY = y
                 runOnUiThread {
+                    // Every coordinate pick becomes a CLICK action immediately.
+                    // No manual X/Y copy-paste is required.
+                    addAction(
+                        ScriptAction(
+                            type = ScriptActionType.CLICK,
+                            x = x,
+                            y = y
+                        )
+                    )
+                    ScriptRepository.saveLast(this, collectScript())
+
                     findViewById<TextView>(R.id.scriptCoordinateStatus).text =
-                        "最近坐标：X=" + x.toInt() + "  Y=" + y.toInt() +
+                        "已添加动作 " + rows.size + "：点击 X=" + x.toInt() + "  Y=" + y.toInt() +
                             "（" + displayWidth + "×" + displayHeight + "）"
-                    updateStatus("已取点：X=" + x.toInt() + " Y=" + y.toInt() + " · 目标应用不会被点击")
+                    updateStatus(
+                        "已自动添加动作 " + rows.size + "：点击 (" +
+                            x.toInt() + ", " + y.toInt() + ")"
+                    )
                 }
             }
         ).show()
@@ -327,9 +342,10 @@ class ScriptEditorActivity : AppCompatActivity() {
         try {
             ContextCompat.startForegroundService(this, intent)
             updateStatus(
-                "脚本运行中：" + script.name + " · D#" + displayId + " · " +
-                    script.actions.size + " 个动作"
+                "脚本已启动：" + script.name + " · D#" + displayId + " · " +
+                    script.actions.size + " 个动作，正在返回虚拟屏预览"
             )
+            finish()
         } catch (t: Throwable) {
             updateStatus("脚本启动失败：" + (t.message ?: "未知错误"))
         }
