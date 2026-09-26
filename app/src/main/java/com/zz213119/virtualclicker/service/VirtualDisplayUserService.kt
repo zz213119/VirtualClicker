@@ -188,6 +188,18 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     override fun launchAppExplicit(packageName: String, activityName: String, displayId: Int): Boolean {
         return try {
+            // 每次真正启动前先强杀一次目标包：--activity-multiple-task 只会不断
+            // 建新 task，不会清掉上一次绑定在旧虚拟屏（此时已经销毁）上的旧
+            // Activity/task；反复开关几次虚拟屏后，旧任务会越堆越多，其中
+            // 某个旧实例最终会抢到前台却渲染不到任何有效 Surface 上，表现为
+            // “画面黑了但进程还在跑”。强杀保证每次都是全新冷启动。
+            val stopCmd = arrayOf("am", "force-stop", packageName)
+            val stopProc = ProcessBuilder(*stopCmd).redirectErrorStream(true).start()
+            val stopOutput = stopProc.inputStream.bufferedReader().readText()
+            stopProc.waitFor()
+            Log.i(TAG, "force-stop $packageName before relaunch: $stopOutput")
+            Thread.sleep(300)
+
             // resolveLaunchActivity() may already return a fully-qualified
             // component such as com.example.app/.MainActivity. Avoid
             // accidentally prefixing the package twice.
