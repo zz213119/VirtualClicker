@@ -59,6 +59,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fullscreenCloseButton: TextView
     private var manualControlEnabled = false
     private var manualTouchActive = false
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var touchDownTime = 0L
     // Invalidates an in-flight create operation when the user closes/reconfigures
     // the display before the binder call has returned.
     private var displayOperationGeneration = 0L
@@ -271,24 +274,6 @@ class MainActivity : AppCompatActivity() {
             if (running) R.drawable.dot_running else R.drawable.dot_idle
         )
         statusBadgeText.text = if (running) "运行中" else "待机"
-    }
-
-    /** Updates the main-preview hint while coordinate-picking is active. */
-    private fun setPointPickMode(enabled: Boolean) {
-        pointPickMode = enabled
-
-        if (enabled) {
-            manualControlHint.text =
-                "取点模式：点击预览画面获取坐标，不会点击目标应用；再次点“结束取点”退出"
-            pickCoordinateButton.text = "结束取点"
-            pickCoordinateStatus.text =
-                "取点模式：已开启 · 当前虚拟屏 ${displayWidth}×${displayHeight}"
-        } else {
-            pickCoordinateButton.text = "取点坐标（点击预览获取 X/Y）"
-            pickCoordinateStatus.text = "取点模式：未开启"
-            manualControlHint.text =
-                "双击预览画面：打开全屏手动控制；点右上角 ✕ 返回（不会关闭虚拟屏）"
-        }
     }
 
     /**
@@ -812,7 +797,6 @@ class MainActivity : AppCompatActivity() {
             val pkg = result.data?.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME)
             selectedPackageName = pkg
             appList.text = if (pkg != null) "已选择：$label\n$pkg" else ""
-            if (pkg != null && currentDisplayId < 0) applyDetectedOrientation(pkg)
             if (pkg != null && currentDisplayId < 0) {
                 applyDetectedOrientation(pkg)
             }
