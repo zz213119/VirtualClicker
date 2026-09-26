@@ -464,8 +464,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Phase 1 验证链路icker() {
+    private fun startAutoClicker() {
         val displayId = currentDisplayId
         if (displayId < 0) {
             autoClickStatus.text = "连点器：请先启动虚拟屏"
@@ -506,15 +505,19 @@ class MainActivity : AppCompatActivity() {
         try {
             androidx.core.content.ContextCompat.startForegroundService(this, intent)
             autoClickStatus.text = if (count == 0) {
-                "连点器：运行中 · ($x, $y) · ${interval}ms · 无限"
+                "连点器：运行中 · (${x}, ${y}) · ${interval}ms · 无限"
             } else {
-                "连点器：运行中 · ($x, $y) · ${interval}ms · ${count}次"
+                "连点器：运行中 · (${x}, ${y}) · ${interval}ms · ${count}次"
             }
         } catch (t: Throwable) {
             autoClickStatus.text = "连点器启动失败：${t.message ?: "未知错误"}"
         }
     }
 
+    /**
+     * Phase 1 验证链路：绑定 UserService → 建虚拟屏 → 把选中的 App 启动进去。
+     * 每一步都单独回填状态文字，方便你截图/贴 Logcat 定位卡在哪一步。
+     */
     private fun stopAutoClicker() {
         runCatching {
             stopService(
