@@ -27,7 +27,7 @@ object VirtualDisplayManager {
         Shizuku.UserServiceArgs(
             ComponentName(BuildConfig.APPLICATION_ID, VirtualDisplayUserService::class.java.name)
         )
-            .daemon(false)          // Phase 1: tie lifecycle to the binding Activity.
+            .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
             .version(1)
