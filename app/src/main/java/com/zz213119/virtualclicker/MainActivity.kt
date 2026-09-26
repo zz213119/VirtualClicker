@@ -74,6 +74,7 @@ class MainActivity : AppCompatActivity() {
     private var displayDpi = 320
     private var displayLandscape = false
     private var gameMode = false
+    private var detectedTargetLandscape: Boolean? = null
 
     private val binderListener = Shizuku.OnBinderReceivedListener {
         refreshStatus()
@@ -349,6 +350,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleGameMode() {
         gameMode = !gameMode
+
+        if (gameMode) {
+            // 4:3 is intended for game-style landscape control. Force the
+            // controller Activity itself into landscape so the fullscreen
+            // preview no longer sits inside a tall portrait window.
+            displayLandscape = true
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            // Restore the target app's natural orientation when leaving
+            // 4:3 mode. Fall back to normal system orientation when unknown.
+            detectedTargetLandscape?.let { landscape ->
+                displayLandscape = landscape
+                requestedOrientation =
+                    if (landscape) {
+                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    }
+            } ?: run {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+
         updateDisplayModeButton()
         val position = resolutionSpinner.selectedItemPosition.coerceIn(0, resolutionPresets.lastIndex)
         val preset = resolutionPresets[position]
@@ -474,7 +498,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyDetectedOrientation(packageName: String) {
         val landscape = detectTargetLandscape(packageName)
-        if (landscape == null) {
+        detectedTargetLandscape = landscape
+        if (landscape == null || gameMode) {
             updateResolutionInfo()
             return
         }
@@ -659,7 +684,8 @@ class MainActivity : AppCompatActivity() {
                 detectTargetLandscape(pkg)
             }
             if (detectedLandscape != null) {
-                displayLandscape = detectedLandscape
+                detectedTargetLandscape = detectedLandscape
+                displayLandscape = if (gameMode) true else detectedLandscape
             }
             val position = resolutionSpinner.selectedItemPosition
                 .coerceIn(0, resolutionPresets.lastIndex)
