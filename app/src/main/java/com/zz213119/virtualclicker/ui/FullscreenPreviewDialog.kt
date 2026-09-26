@@ -32,12 +32,15 @@ class FullscreenPreviewDialog(
     private val displayId: Int,
     private val displayWidth: Int,
     private val displayHeight: Int,
-    private val onClosed: () -> Unit
+    private val onClosed: () -> Unit,
+    private val onPointPicked: ((Float, Float) -> Unit)? = null
 ) : Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
 
     private var touchDownX = 0f
     private var touchDownY = 0f
     private var touchDownTime = 0L
+    private var pointPickMode = onPointPicked != null
+    private lateinit var coordinateHint: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,12 +76,58 @@ class FullscreenPreviewDialog(
             Gravity.CENTER
         ))
 
+        coordinateHint = TextView(context).apply {
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0x99000000.toInt())
+            text = if (pointPickMode) "取点模式：点击画面查看 X / Y" else "手动控制模式"
+        }
+        root.addView(
+            coordinateHint,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                44.dp,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply { topMargin = 12.dp }
+        )
+
+        val modeButton = TextView(context).apply {
+            text = if (pointPickMode) "结束取点" else "取点坐标"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(16.dp, 0, 16.dp, 0)
+            contentDescription = "切换取点坐标模式"
+            setOnClickListener {
+                pointPickMode = !pointPickMode
+                text = if (pointPickMode) "结束取点" else "取点坐标"
+                coordinateHint.text = if (pointPickMode) {
+                    "取点模式：点击画面查看 X / Y"
+                } else {
+                    "手动控制模式：点击/滑动会发送到目标应用"
+                }
+            }
+        }
+        root.addView(
+            modeButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                44.dp,
+                Gravity.TOP or Gravity.START
+            ).apply {
+                topMargin = 12.dp
+                leftMargin = 16.dp
+            }
+        )
+
         val close = TextView(context).apply {
             text = "✕"
             textSize = 34f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            contentDescription = "关闭全屏手动控制"
+            contentDescription = "关闭全屏预览"
             setOnClickListener { dismiss() }
         }
         root.addView(close, FrameLayout.LayoutParams(64.dp, 64.dp, Gravity.TOP or Gravity.END).apply {
@@ -111,33 +160,43 @@ class FullscreenPreviewDialog(
         })
 
         surface.setOnTouchListener { view, event ->
+            val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
+            val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
+
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     touchDownX = event.x
                     touchDownY = event.y
                     touchDownTime = System.currentTimeMillis()
+
+                    if (pointPickMode) {
+                        val x = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
+                        val y = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
+                        coordinateHint.text = "坐标：X=" + x.toInt() + "  Y=" + y.toInt()
+                        onPointPicked?.invoke(x, y)
+                    }
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
-                    val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
-                    val distance = hypot(event.x - touchDownX, event.y - touchDownY)
-                    val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30_000)
-                    activity.lifecycleScope.launch {
-                        withContext(Dispatchers.IO) {
-                            if (distance < 24f) {
-                                VirtualDisplayManager.tap(
-                                    displayId, touchDownX * scaleX, touchDownY * scaleY
-                                )
-                            } else {
-                                VirtualDisplayManager.swipe(
-                                    displayId,
-                                    touchDownX * scaleX,
-                                    touchDownY * scaleY,
-                                    event.x * scaleX,
-                                    event.y * scaleY,
-                                    duration.toInt()
-                                )
+                    if (!pointPickMode) {
+                        val distance = hypot(event.x - touchDownX, event.y - touchDownY)
+                        val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30_000)
+                        activity.lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                if (distance < 24f) {
+                                    VirtualDisplayManager.tap(
+                                        displayId, touchDownX * scaleX, touchDownY * scaleY
+                                    )
+                                } else {
+                                    VirtualDisplayManager.swipe(
+                                        displayId,
+                                        touchDownX * scaleX,
+                                        touchDownY * scaleY,
+                                        event.x * scaleX,
+                                        event.y * scaleY,
+                                        duration.toInt()
+                                    )
+                                }
                             }
                         }
                     }
