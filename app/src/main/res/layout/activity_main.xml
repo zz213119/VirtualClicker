@@ -79,7 +79,7 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <FrameLayout
+        <com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
             android:id="@+id/previewContainer"
             android:layout_width="240dp"
             android:layout_height="426dp"
@@ -131,7 +131,7 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
-        </FrameLayout>
+        </com.zz213119.virtualclicker.ui.AspectRatioFrameLayout>
 
         <TextView
             android:id="@+id/resolutionLabel"
