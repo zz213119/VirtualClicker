@@ -156,7 +156,13 @@ class FullscreenPreviewDialog(
                 height: Int
             ) = Unit
 
-            override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                activity.lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        VirtualDisplayManager.setDisplaySurface(displayId, null)
+                    }
+                }
+            }
         })
 
         surface.setOnTouchListener { view, event ->
