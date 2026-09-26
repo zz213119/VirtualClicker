@@ -516,9 +516,9 @@ class MainActivity : AppCompatActivity() {
             activity = this,
             displayId = displayId,
             displayWidth = displayWidth,
-            displayHeight = displayHeight
-        ) {
-            val surface = previewSurface
+            displayHeight = displayHeight,
+            onClosed = {
+                val surface = previewSurface
             if (currentDisplayId == displayId && surface?.isValid == true) {
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
@@ -526,7 +526,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-        }.show()
+        ).show()
     }
 
     private fun handleManualTouch(view: View, event: MotionEvent) {
