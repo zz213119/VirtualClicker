@@ -20,6 +20,7 @@ import com.zz213119.virtualclicker.script.ScriptDefinition
 import com.zz213119.virtualclicker.script.ScriptJson
 import com.zz213119.virtualclicker.script.ScriptRepository
 import com.zz213119.virtualclicker.service.ScriptRunnerService
+import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 
 class ScriptEditorActivity : AppCompatActivity() {
 
@@ -45,6 +46,10 @@ class ScriptEditorActivity : AppCompatActivity() {
 
     private val rows = mutableListOf<RowViews>()
     private var displayId: Int = -1
+    private var displayWidth: Int = 1080
+    private var displayHeight: Int = 1920
+    private var lastPickedX: Float? = null
+    private var lastPickedY: Float? = null
 
     private val typeLabels = listOf("点击", "长按", "滑动", "等待")
 
@@ -59,6 +64,8 @@ class ScriptEditorActivity : AppCompatActivity() {
         status = findViewById(R.id.scriptStatus)
 
         displayId = intent.getIntExtra(EXTRA_DISPLAY_ID, -1)
+        displayWidth = intent.getIntExtra("extra_editor_display_width", 1080).coerceAtLeast(1)
+        displayHeight = intent.getIntExtra("extra_editor_display_height", 1920).coerceAtLeast(1)
         displayInfo.text = if (displayId >= 0) {
             "当前目标：Virtual Display #" + displayId
         } else {
@@ -92,6 +99,10 @@ class ScriptEditorActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.addWaitAction).setOnClickListener {
             addAction(ScriptAction(ScriptActionType.WAIT, durationMs = 1000L))
+        }
+
+        findViewById<Button>(R.id.pickScriptCoordinate).setOnClickListener {
+            openCoordinatePicker()
         }
 
         findViewById<Button>(R.id.saveScript).setOnClickListener {
@@ -252,6 +263,39 @@ class ScriptEditorActivity : AppCompatActivity() {
                 ?: 1,
             actions = actions
         )
+    }
+
+    private fun openCoordinatePicker() {
+        if (displayId < 0) {
+            updateStatus("无法取点：当前没有 Virtual Display")
+            return
+        }
+
+        FullscreenPreviewDialog(
+            activity = this,
+            displayId = displayId,
+            displayWidth = displayWidth,
+            displayHeight = displayHeight,
+            onClosed = {
+                updateStatus(
+                    if (lastPickedX != null && lastPickedY != null) {
+                        "最近取点：X=" + lastPickedX!!.toInt() + " Y=" + lastPickedY!!.toInt()
+                    } else {
+                        "取点窗口已关闭"
+                    }
+                )
+            },
+            onPointPicked = { x, y ->
+                lastPickedX = x
+                lastPickedY = y
+                runOnUiThread {
+                    findViewById<TextView>(R.id.scriptCoordinateStatus).text =
+                        "最近坐标：X=" + x.toInt() + "  Y=" + y.toInt() +
+                            "（" + displayWidth + "×" + displayHeight + "）"
+                    updateStatus("已取点：X=" + x.toInt() + " Y=" + y.toInt() + " · 目标应用不会被点击")
+                }
+            }
+        ).show()
     }
 
     private fun saveCurrentScript() {
