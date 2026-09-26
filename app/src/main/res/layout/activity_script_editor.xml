@@ -109,6 +109,21 @@
             android:text="当前 MVP 支持：点击、长按、滑动、等待，以及整段脚本循环。"
             android:textSize="13sp" />
 
+        <Button
+            android:id="@+id/pickScriptCoordinate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="取点坐标（打开虚拟屏）" />
+
+        <TextView
+            android:id="@+id/scriptCoordinateStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:text="最近坐标：暂无"
+            android:textSize="13sp" />
+
         <LinearLayout
             android:id="@+id/scriptActionContainer"
             android:layout_width="match_parent"
