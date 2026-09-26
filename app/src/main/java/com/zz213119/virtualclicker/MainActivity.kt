@@ -27,6 +27,7 @@ import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
 import com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
+import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -166,14 +167,7 @@ class MainActivity : AppCompatActivity() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (!manualControlEnabled) {
-                    manualControlEnabled = true
-                    manualTouchActive = false
-                    fullscreenCloseButton.visibility = View.VISIBLE
-                    manualControlHint.text =
-                        "手动控制：已开启 —— 直接点击/滑动操作虚拟屏；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
-                    Toast.makeText(this@MainActivity, "手动控制已开启", Toast.LENGTH_SHORT).show()
-                }
+                openFullscreenPreview()
                 return true
             }
         })
@@ -498,6 +492,30 @@ class MainActivity : AppCompatActivity() {
             manualControlHint.text =
                 "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
         }
+    }
+
+    private fun openFullscreenPreview() {
+        val displayId = currentDisplayId
+        if (displayId < 0) {
+            Toast.makeText(this, "请先启动虚拟屏应用", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        FullscreenPreviewDialog(
+            activity = this,
+            displayId = displayId,
+            displayWidth = displayWidth,
+            displayHeight = displayHeight
+        ) {
+            val surface = previewSurface
+            if (currentDisplayId == displayId && surface?.isValid == true) {
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                    }
+                }
+            }
+        }.show()
     }
 
     private fun handleManualTouch(view: View, event: MotionEvent) {
