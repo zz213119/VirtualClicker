@@ -24,6 +24,7 @@ import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
+import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -50,18 +51,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusDot: View
     private lateinit var statusBadgeText: TextView
     private lateinit var manualControlHint: TextView
-    private lateinit var previewContainer: View
-    private lateinit var fullscreenCloseButton: TextView
-
-    private var manualControlEnabled = false
-    private var touchDownX = 0f
-    private var touchDownY = 0f
-    private var touchDownTime = 0L
-    // True only for touches that started after manual control was already enabled.
-    // This prevents the second tap of the "double tap to enter" gesture from
-    // accidentally being forwarded to the target app.
-    private var manualTouchActive = false
-
     // Invalidates an in-flight create operation when the user closes/reconfigures
     // the display before the binder call has returned.
     private var displayOperationGeneration = 0L
@@ -103,17 +92,6 @@ class MainActivity : AppCompatActivity() {
         statusDot = findViewById(R.id.statusDot)
         statusBadgeText = findViewById(R.id.statusBadgeText)
         manualControlHint = findViewById(R.id.manualControlHint)
-        previewContainer = findViewById(R.id.previewContainer)
-        fullscreenCloseButton = findViewById(R.id.fullscreenCloseButton)
-        fullscreenCloseButton.visibility = View.GONE
-        fullscreenCloseButton.setOnClickListener {
-            manualControlEnabled = false
-            manualTouchActive = false
-            fullscreenCloseButton.visibility = View.GONE
-            manualControlHint.text =
-                "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
-            Toast.makeText(this, "已结束手动控制，虚拟屏仍保持运行", Toast.LENGTH_SHORT).show()
-        }
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -161,18 +139,7 @@ class MainActivity : AppCompatActivity() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (!manualControlEnabled) {
-                    manualControlEnabled = true
-                    manualTouchActive = false
-                    fullscreenCloseButton.visibility = View.VISIBLE
-                    manualControlHint.text =
-                        "手动控制：已开启 —— 可以直接点击/滑动虚拟屏；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
-                    Toast.makeText(
-                        this@MainActivity,
-                        "手动控制已开启",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                openFullscreenPreview()
                 return true
             }
         })
@@ -187,29 +154,8 @@ class MainActivity : AppCompatActivity() {
 
             doubleTapDetector.onTouchEvent(event)
 
-            // A manual touch must have started while manual control was already
-            // enabled. This keeps the gesture that entered control mode from
-            // producing an accidental click in the target app.
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    manualTouchActive = manualControlEnabled
-                    if (manualTouchActive) {
-                        handleManualTouch(view, event)
-                    }
-                }
-                MotionEvent.ACTION_MOVE,
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> {
-                    if (manualTouchActive) {
-                        handleManualTouch(view, event)
-                    }
-                    if (event.actionMasked == MotionEvent.ACTION_UP ||
-                        event.actionMasked == MotionEvent.ACTION_CANCEL
-                    ) {
-                        manualTouchActive = false
-                    }
-                }
-            }
+            // Main-screen preview remains read-only. Manual input belongs to
+            // the immersive preview opened by a double tap.
             true
         }
 
@@ -287,17 +233,35 @@ class MainActivity : AppCompatActivity() {
         statusBadgeText.text = if (running) "运行中" else "待机"
     }
 
-    /**
-     * 手动控制：把预览 SurfaceView 上的触摸坐标，按显示比例换算成虚拟屏坐标，
-     * 转发给 VirtualDisplayManager。按下-抬起距离很小当点击，距离大当滑动。
-     */
+    private fun openFullscreenPreview() {
+        val displayId = currentDisplayId
+        if (displayId < 0) {
+            Toast.makeText(this, "请先启动虚拟屏应用", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        FullscreenPreviewDialog(
+            activity = this,
+            displayId = displayId,
+            displayWidth = displayWidth,
+            displayHeight = displayHeight
+        ) {
+            val surface = previewSurface
+            if (currentDisplayId == displayId && surface?.isValid == true) {
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                    }
+                }
+            }
+        }.show()
+    }
+
+    /** Updates the main-preview hint while coordinate-picking is active. */
     private fun setPointPickMode(enabled: Boolean) {
         pointPickMode = enabled
 
         if (enabled) {
-            // Picking a point and actually touching the target app are
-            // mutually exclusive, so disable manual control while picking.
-            manualControlEnabled = false
             manualControlHint.text =
                 "取点模式：点击预览画面获取坐标，不会点击目标应用；再次点“结束取点”退出"
             pickCoordinateButton.text = "结束取点"
@@ -307,7 +271,7 @@ class MainActivity : AppCompatActivity() {
             pickCoordinateButton.text = "取点坐标（点击预览获取 X/Y）"
             pickCoordinateStatus.text = "取点模式：未开启"
             manualControlHint.text =
-                "双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
+                "双击预览画面：打开全屏手动控制；点右上角 ✕ 返回（不会关闭虚拟屏）"
         }
     }
 
@@ -339,46 +303,6 @@ class MainActivity : AppCompatActivity() {
             "已获取坐标：($x, $y)",
             Toast.LENGTH_SHORT
         ).show()
-    }
-
-    private fun handleManualTouch(view: View, event: MotionEvent) {
-        val displayId = currentDisplayId
-        if (displayId < 0) return
-
-        val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
-        val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
-
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                touchDownX = event.x
-                touchDownY = event.y
-                touchDownTime = System.currentTimeMillis()
-            }
-
-            MotionEvent.ACTION_UP -> {
-                val dx = event.x - touchDownX
-                val dy = event.y - touchDownY
-                val distance = kotlin.math.hypot(dx, dy)
-                val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30000)
-
-                val startX = touchDownX * scaleX
-                val startY = touchDownY * scaleY
-
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        if (distance < 24f) {
-                            VirtualDisplayManager.tap(displayId, startX, startY)
-                        } else {
-                            val endX = event.x * scaleX
-                            val endY = event.y * scaleY
-                            VirtualDisplayManager.swipe(
-                                displayId, startX, startY, endX, endY, duration.toInt()
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private data class ResolutionPreset(
