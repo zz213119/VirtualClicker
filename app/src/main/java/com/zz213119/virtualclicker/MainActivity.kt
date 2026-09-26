@@ -238,6 +238,15 @@ class MainActivity : AppCompatActivity() {
             appPickerLauncher.launch(Intent(this, AppPickerActivity::class.java))
         }
 
+        findViewById<Button>(R.id.openScriptEditor).setOnClickListener {
+            val intent = Intent(this, com.zz213119.virtualclicker.ui.ScriptEditorActivity::class.java)
+                .putExtra(
+                    com.zz213119.virtualclicker.ui.ScriptEditorActivity.EXTRA_DISPLAY_ID,
+                    currentDisplayId
+                )
+            startActivity(intent)
+        }
+
         findViewById<Button>(R.id.launchVirtualDisplay).setOnClickListener {
             launchSelectedAppOnVirtualDisplay()
         }
