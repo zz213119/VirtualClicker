@@ -70,9 +70,19 @@ class CoordinateMarkerView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val radius = markerSizePx / 2f - strokePaint.strokeWidth
-        canvas.drawCircle(markerSizePx / 2f, markerSizePx / 2f, radius, fillPaint)
-        canvas.drawCircle(markerSizePx / 2f, markerSizePx / 2f, radius, strokePaint)
+        val center = markerSizePx / 2f
+        val radius = center - strokePaint.strokeWidth
+        canvas.drawCircle(center, center, radius, fillPaint)
+        canvas.drawCircle(center, center, radius, strokePaint)
+
+        // Short crosshair arms make the selected coordinate easy to align
+        // precisely, similar to common auto-clicker point markers.
+        val arm = 6f * density
+        val gap = radius + 2f * density
+        canvas.drawLine(center, gap, center, gap + arm, strokePaint)
+        canvas.drawLine(center, markerSizePx - gap, center, markerSizePx - gap - arm, strokePaint)
+        canvas.drawLine(gap, center, gap + arm, center, strokePaint)
+        canvas.drawLine(markerSizePx - gap, center, markerSizePx - gap - arm, center, strokePaint)
 
         val fontMetrics = textPaint.fontMetrics
         val baseline = markerSizePx / 2f - (fontMetrics.ascent + fontMetrics.descent) / 2f
