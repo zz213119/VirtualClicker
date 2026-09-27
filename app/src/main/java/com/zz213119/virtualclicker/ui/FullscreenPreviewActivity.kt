@@ -33,6 +33,8 @@ class FullscreenPreviewActivity : Activity() {
     private lateinit var surface: SurfaceView
     private lateinit var hint: TextView
     private lateinit var modeButton: TextView
+    private lateinit var closeButton: TextView
+    private var pressedControl = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,7 +129,7 @@ class FullscreenPreviewActivity : Activity() {
             ).apply { topMargin = 12; leftMargin = 16 }
         )
 
-        val close = TextView(this).apply {
+        closeButton = TextView(this).apply {
             text = "✕"
             textSize = 34f
             gravity = Gravity.CENTER
@@ -138,8 +140,8 @@ class FullscreenPreviewActivity : Activity() {
             }
         }
         root.addView(
-            close,
-            FrameLayout.LayoutParams(64, 64, Gravity.TOP or Gravity.END).apply {
+            closeButton,
+            FrameLayout.LayoutParams(72, 72, Gravity.TOP or Gravity.END).apply {
                 topMargin = 8; rightMargin = 12
             }
         )
@@ -179,6 +181,64 @@ class FullscreenPreviewActivity : Activity() {
             transformed.recycle()
             true
         }
+    }
+
+    private fun controlAt(rawX: Float, rawY: Float): Int {
+        if (::closeButton.isInitialized) {
+            val loc = IntArray(2)
+            closeButton.getLocationOnScreen(loc)
+            if (rawX >= loc[0] &&
+                rawX < loc[0] + closeButton.width &&
+                rawY >= loc[1] &&
+                rawY < loc[1] + closeButton.height
+            ) {
+                return 1
+            }
+        }
+
+        if (::modeButton.isInitialized) {
+            val loc = IntArray(2)
+            modeButton.getLocationOnScreen(loc)
+            if (rawX >= loc[0] &&
+                rawX < loc[0] + modeButton.width &&
+                rawY >= loc[1] &&
+                rawY < loc[1] + modeButton.height
+            ) {
+                return 2
+            }
+        }
+        return 0
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // SurfaceView uses a separate rendering surface. Intercept the two
+        // control areas at Activity level so Android/OEM surface composition
+        // cannot accidentally route the first tap into the preview instead
+        // of the button.
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pressedControl = controlAt(ev.rawX, ev.rawY)
+                if (pressedControl != 0) return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val target = pressedControl
+                pressedControl = 0
+                if (target != 0) {
+                    when (target) {
+                        1 -> if (controlAt(ev.rawX, ev.rawY) == 1) closeButton.performClick()
+                        2 -> if (controlAt(ev.rawX, ev.rawY) == 2) modeButton.performClick()
+                    }
+                    return true
+                }
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                pressedControl = 0
+            }
+        }
+
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun attachSurface(surface: android.view.Surface) {
