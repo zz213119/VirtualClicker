@@ -59,6 +59,19 @@ object ScriptRepository {
         return load(context, name) != null
     }
 
+    fun rememberLast(context: Context, name: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getString(SCRIPT_KEY_PREFIX + name, null).isNullOrEmpty()) {
+            prefs.edit()
+                .putString(KEY_LAST_NAME, name)
+                .putString(
+                    KEY_LAST_SCRIPT,
+                    prefs.getString(SCRIPT_KEY_PREFIX + name, null)
+                )
+                .apply()
+        }
+    }
+
     /**
      * Save/update without asking. Used by point-pick autosave and script run.
      */
