@@ -142,7 +142,15 @@ class ScriptRunnerService : Service() {
     private suspend fun executeAction(displayId: Int, action: ScriptAction): Boolean {
         return when (action.type) {
             ScriptActionType.CLICK ->
-                VirtualDisplayManager.tap(displayId, action.x, action.y)
+                // A CLICK now has an explicit press duration. Using the existing
+                // display-targeted long-press primitive gives us a real DOWN ->
+                // wait N ms -> UP sequence instead of an instantaneous tap.
+                VirtualDisplayManager.longPress(
+                    displayId,
+                    action.x,
+                    action.y,
+                    action.durationMs.coerceIn(1L, 30000L).toInt()
+                )
 
             ScriptActionType.LONG_PRESS ->
                 VirtualDisplayManager.longPress(
