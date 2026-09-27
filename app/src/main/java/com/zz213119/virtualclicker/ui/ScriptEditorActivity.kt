@@ -326,13 +326,40 @@ class ScriptEditorActivity : AppCompatActivity() {
                     if (row != null) {
                         row.x.setText(x.toInt().toString())
                         row.y.setText(y.toInt().toString())
-                        ScriptRepository.saveLast(this, collectScript())
+                        ScriptRepository.saveOrUpdate(this, collectScript())
                         lastPickedX = x
                         lastPickedY = y
                         findViewById<TextView>(R.id.scriptCoordinateStatus).text =
                             "已调整动作 " + (index + 1) + "：X=" + x.toInt() + "  Y=" + y.toInt() +
                                 " · 长按球球可继续移动"
                     }
+                }
+            },
+            onSwipeRecorded = { x1, y1, x2, y2, durationMs ->
+                runOnUiThread {
+                    addAction(
+                        ScriptAction(
+                            type = ScriptActionType.SWIPE,
+                            x = x1,
+                            y = y1,
+                            x2 = x2,
+                            y2 = y2,
+                            durationMs = durationMs
+                        )
+                    )
+                    ScriptRepository.saveOrUpdate(this, collectScript())
+                    lastPickedX = x2
+                    lastPickedY = y2
+                    findViewById<TextView>(R.id.scriptCoordinateStatus).text =
+                        "已添加动作 " + rows.size + "：滑动 (" +
+                            x1.toInt() + ", " + y1.toInt() + ") → (" +
+                            x2.toInt() + ", " + y2.toInt() + ") · " +
+                            durationMs + "ms"
+                    updateStatus(
+                        "已自动添加动作 " + rows.size + "：滑动 (" +
+                            x1.toInt() + ", " + y1.toInt() + ") → (" +
+                            x2.toInt() + ", " + y2.toInt() + ")"
+                    )
                 }
             }
         ).show()
