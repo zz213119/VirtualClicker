@@ -116,8 +116,8 @@ class FullscreenPreviewActivity : Activity() {
                     finish()
                 } else {
                     pointPickMode = true
-                    (it as TextView).text = "结束取点"
-                    hint.text = "取点模式：点击画面自动添加动作"
+                    modeButton.setText("结束取点")
+                    hint.setText("取点模式：点击画面自动添加动作")
                 }
             }
         }
