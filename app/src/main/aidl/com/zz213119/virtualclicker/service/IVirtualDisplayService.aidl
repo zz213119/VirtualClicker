@@ -48,6 +48,10 @@ interface IVirtualDisplayService {
         int durationMs
     );
 
+    // Injects a real-time MotionEvent stream into the target display.
+    // Used by the interactive fullscreen preview so MOVE events are preserved.
+    boolean injectMotionEvent(in android.view.MotionEvent event, int displayId);
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }
