@@ -27,16 +27,18 @@ class CoordinateMarkerView(
         private set
 
     private val density = resources.displayMetrics.density
-    val markerSizePx: Int = (44f * density).toInt().coerceAtLeast(32)
+    // Smaller overlay so the marker does not cover the game UI.
+    val markerSizePx: Int = (30f * density).toInt().coerceAtLeast(24)
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // Transparent center: the underlying game remains visible.
         style = Paint.Style.FILL
-        color = 0xEEF5F5F5.toInt()
+        color = 0x00FFFFFF
     }
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 2f * density
+        strokeWidth = 1.5f * density
         color = 0xFF111111.toInt()
     }
 
@@ -45,7 +47,7 @@ class CoordinateMarkerView(
         color = 0xFF111111.toInt()
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 19f * density
+        textSize = 14f * density
     }
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -77,8 +79,8 @@ class CoordinateMarkerView(
 
         // Short crosshair arms make the selected coordinate easy to align
         // precisely, similar to common auto-clicker point markers.
-        val arm = 6f * density
-        val gap = radius + 2f * density
+        val arm = 4f * density
+        val gap = radius + 1f * density
         canvas.drawLine(center, gap, center, gap + arm, strokePaint)
         canvas.drawLine(center, markerSizePx - gap, center, markerSizePx - gap - arm, strokePaint)
         canvas.drawLine(gap, center, gap + arm, center, strokePaint)
