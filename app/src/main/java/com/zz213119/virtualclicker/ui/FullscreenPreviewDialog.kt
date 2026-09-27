@@ -2,6 +2,7 @@ package com.zz213119.virtualclicker.ui
 
 import android.app.Dialog
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -172,48 +173,31 @@ class FullscreenPreviewDialog(
             }
         })
 
+        @Suppress("ClickableViewAccessibility")
         surface.setOnTouchListener { view, event ->
             val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
             val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
 
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    touchDownX = event.x
-                    touchDownY = event.y
-                    touchDownTime = System.currentTimeMillis()
-
-                    if (pointPickMode) {
-                        val x = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
-                        val y = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
-                        coordinateHint.text = "坐标：X=" + x.toInt() + "  Y=" + y.toInt()
-                        onPointPicked?.invoke(x, y)
-                    }
+            if (pointPickMode) {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    val x = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
+                    val y = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
+                    coordinateHint.text = "坐标：X=" + x.toInt() + "  Y=" + y.toInt()
+                    onPointPicked?.invoke(x, y)
                 }
+                return@setOnTouchListener true
+            }
 
-                MotionEvent.ACTION_UP -> {
-                    if (!pointPickMode) {
-                        val distance = hypot(event.x - touchDownX, event.y - touchDownY)
-                        val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30_000)
-                        activity.lifecycleScope.launch {
-                            withContext(Dispatchers.IO) {
-                                if (distance < 24f) {
-                                    VirtualDisplayManager.tap(
-                                        displayId, touchDownX * scaleX, touchDownY * scaleY
-                                    )
-                                } else {
-                                    VirtualDisplayManager.swipe(
-                                        displayId,
-                                        touchDownX * scaleX,
-                                        touchDownY * scaleY,
-                                        event.x * scaleX,
-                                        event.y * scaleY,
-                                        duration.toInt()
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+            // Forward the complete DOWN -> MOVE -> UP/CANCEL stream instead of
+            // synthesizing one shell `input swipe` only after the finger lifts.
+            // This makes dragging responsive and lets games receive real motion.
+            val transformed = MotionEvent.obtain(event)
+            transformed.transform(Matrix().apply { setScale(scaleX, scaleY) })
+            val ok = VirtualDisplayManager.injectMotionEvent(transformed, displayId)
+            transformed.recycle()
+
+            if (!ok && event.actionMasked != MotionEvent.ACTION_MOVE) {
+                coordinateHint.text = "输入注入失败，请查看日志"
             }
             true
         }
