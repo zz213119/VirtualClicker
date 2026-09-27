@@ -1,6 +1,7 @@
 package com.zz213119.virtualclicker.ui
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Matrix
 import android.os.Bundle
@@ -65,6 +66,7 @@ class FullscreenPreviewActivity : Activity() {
         }
 
         val preview = AspectRatioFrameLayout(
+            this,
             displayWidth.toFloat() / displayHeight.toFloat()
         )
         surface = SurfaceView(this)
@@ -199,7 +201,10 @@ class FullscreenPreviewActivity : Activity() {
         super.onDestroy()
     }
 
-    private class AspectRatioFrameLayout(private val aspectRatio: Float) : FrameLayout(this) {
+    private class AspectRatioFrameLayout(
+        context: Context,
+        private val aspectRatio: Float
+    ) : FrameLayout(context) {
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
             val availableHeight = MeasureSpec.getSize(heightMeasureSpec)
