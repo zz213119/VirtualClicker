@@ -9,7 +9,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
@@ -17,7 +16,6 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.view.WindowCompat
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
-import kotlin.math.hypot
 
 class FullscreenPreviewActivity : Activity() {
 
@@ -110,15 +108,15 @@ class FullscreenPreviewActivity : Activity() {
             setTextColor(Color.WHITE)
             setBackgroundColor(0x99000000.toInt())
             setPadding(18, 0, 18, 0)
-            setOnClickListener {
-                if (pointPickMode) {
-                    CoordinatePickBus.listener = null
-                    finish()
-                } else {
-                    pointPickMode = true
-                    modeButton.setText("结束取点")
-                    hint.setText("取点模式：点击画面自动添加动作")
-                }
+        }
+        modeButton.setOnClickListener {
+            if (pointPickMode) {
+                CoordinatePickBus.listener = null
+                finish()
+            } else {
+                pointPickMode = true
+                modeButton.text = "结束取点"
+                hint.text = "取点模式：点击画面自动添加动作"
             }
         }
         root.addView(
