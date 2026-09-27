@@ -357,8 +357,7 @@ class MainActivity : AppCompatActivity() {
         }
         previewContainer.post {
             coordinateMarkers.forEach { marker ->
-                marker.x = marker.x.coerceIn(-marker.width / 2f, previewContainer.width - marker.width / 2f)
-                marker.y = marker.y.coerceIn(-marker.height / 2f, previewContainer.height - marker.height / 2f)
+                marker.setNormalizedPosition(marker.normalizedX, marker.normalizedY)
             }
         }
     }
@@ -425,15 +424,12 @@ class MainActivity : AppCompatActivity() {
         previewContainer.addView(marker)
 
         marker.post {
-            val parentWidth = previewContainer.width
-            val parentHeight = previewContainer.height
-            if (parentWidth > 0 && parentHeight > 0) {
-                marker.x = x / displayWidth * parentWidth - marker.width / 2f
-                marker.y = y / displayHeight * parentHeight - marker.height / 2f
-            }
+            marker.setNormalizedPosition(
+                x / displayWidth.coerceAtLeast(1),
+                y / displayHeight.coerceAtLeast(1)
+            )
         }
     }
-
     private fun clearCoordinateMarkers() {
         coordinateMarkers.forEach { previewContainer.removeView(it) }
         coordinateMarkers.clear()
@@ -1031,12 +1027,7 @@ class MainActivity : AppCompatActivity() {
         setPreviewRunning(currentDisplayId >= 0)
         previewContainer.post {
             coordinateMarkers.forEach { marker ->
-                val parentWidth = previewContainer.width
-                val parentHeight = previewContainer.height
-                if (parentWidth > 0 && parentHeight > 0) {
-                    marker.x = marker.x.coerceIn(-marker.width / 2f, parentWidth - marker.width / 2f)
-                    marker.y = marker.y.coerceIn(-marker.height / 2f, parentHeight - marker.height / 2f)
-                }
+                marker.setNormalizedPosition(marker.normalizedX, marker.normalizedY)
             }
         }
     }
