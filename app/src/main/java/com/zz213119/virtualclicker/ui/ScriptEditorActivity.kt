@@ -20,7 +20,6 @@ import com.zz213119.virtualclicker.script.ScriptDefinition
 import com.zz213119.virtualclicker.script.ScriptJson
 import com.zz213119.virtualclicker.script.ScriptRepository
 import com.zz213119.virtualclicker.service.ScriptRunnerService
-import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 
 class ScriptEditorActivity : AppCompatActivity() {
 
@@ -265,54 +264,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         )
     }
 
-    private fun openCoordinatePicker() {
-        if (displayId < 0) {
-            updateStatus("无法取点：当前没有 Virtual Display")
-            return
-        }
-
-        FullscreenPreviewDialog(
-            activity = this,
-            displayId = displayId,
-            displayWidth = displayWidth,
-            displayHeight = displayHeight,
-            onClosed = {
-                updateStatus(
-                    if (lastPickedX != null && lastPickedY != null) {
-                        "取点结束，当前脚本已有 " + rows.size + " 个动作；最近坐标：" +
-                            lastPickedX!!.toInt() + ", " + lastPickedY!!.toInt()
-                    } else {
-                        "取点窗口已关闭"
-                    }
-                )
-            },
-            onPointPicked = { x, y ->
-                lastPickedX = x
-                lastPickedY = y
-                runOnUiThread {
-                    // Every coordinate pick becomes a CLICK action immediately.
-                    // No manual X/Y copy-paste is required.
-                    addAction(
-                        ScriptAction(
-                            type = ScriptActionType.CLICK,
-                            x = x,
-                            y = y
-                        )
-                    )
-                    ScriptRepository.saveLast(this, collectScript())
-
-                    findViewById<TextView>(R.id.scriptCoordinateStatus).text =
-                        "已添加动作 " + rows.size + "：点击 X=" + x.toInt() + "  Y=" + y.toInt() +
-                            "（" + displayWidth + "×" + displayHeight + "）"
-                    updateStatus(
-                        "已自动添加动作 " + rows.size + "：点击 (" +
-                            x.toInt() + ", " + y.toInt() + ")"
-                    )
-                }
-            }
-        ).show()
-    }
-
+    private fun openCoordinatePicker() {,        if (displayId < 0) {,            updateStatus("无法取点：当前没有 Virtual Display"),            return,        },,        CoordinatePickBus.listener = { x, y ->,            runOnUiThread {,                // Each pick immediately becomes the next click action.,                addAction(,                    ScriptAction(,                        type = ScriptActionType.CLICK,,                        x = x,,                        y = y,                    ),                ),                lastPickedX = x,                lastPickedY = y,                findViewById<TextView>(R.id.scriptCoordinateStatus).text =,                    "已添加动作 " + rows.size + "：点击 X=" + x.toInt() + "  Y=" + y.toInt() +,                        "（" + displayWidth + "×" + displayHeight + "）",                ScriptRepository.saveLast(this, collectScript()),                updateStatus("已自动添加动作 " + rows.size + "：点击 (" + x.toInt() + ", " + y.toInt() + ")"),            },        },,        val intent = android.content.Intent(this, FullscreenPreviewActivity::class.java),            .putExtra(FullscreenPreviewActivity.EXTRA_DISPLAY_ID, displayId),            .putExtra(FullscreenPreviewActivity.EXTRA_DISPLAY_WIDTH, displayWidth),            .putExtra(FullscreenPreviewActivity.EXTRA_DISPLAY_HEIGHT, displayHeight),            .putExtra(FullscreenPreviewActivity.EXTRA_POINT_PICK_MODE, true),        startActivity(intent),    },
     private fun saveCurrentScript() {
         val script = collectScript()
         ScriptRepository.saveLast(this, script)
