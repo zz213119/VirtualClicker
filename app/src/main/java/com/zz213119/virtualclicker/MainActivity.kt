@@ -27,6 +27,7 @@ import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
 import com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
+import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -525,12 +526,22 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val intent = Intent(this, com.zz213119.virtualclicker.ui.FullscreenPreviewActivity::class.java)
-            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_DISPLAY_ID, displayId)
-            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_DISPLAY_WIDTH, displayWidth)
-            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_DISPLAY_HEIGHT, displayHeight)
-            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_POINT_PICK_MODE, false)
-        startActivity(intent)
+        FullscreenPreviewDialog(
+            activity = this,
+            displayId = displayId,
+            displayWidth = displayWidth,
+            displayHeight = displayHeight,
+            onClosed = {
+                val surface = previewSurface
+                if (currentDisplayId == displayId && surface?.isValid == true) {
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                        }
+                    }
+                }
+            }
+        ).show()
     }
     private fun handleManualTouch(view: View, event: MotionEvent) {
         val displayId = currentDisplayId
@@ -826,43 +837,6 @@ class MainActivity : AppCompatActivity() {
     /** 供后续 Phase 1 的 createDisplay+launch 调用链使用。 */
     var selectedPackageName: String? = null
         private set
-
-    private var pressedFullscreenClose = false
-
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (::fullscreenCloseButton.isInitialized &&
-            fullscreenCloseButton.visibility == View.VISIBLE
-        ) {
-            val loc = IntArray(2)
-            fullscreenCloseButton.getLocationOnScreen(loc)
-            val inside = ev.rawX >= loc[0] &&
-                ev.rawX < loc[0] + fullscreenCloseButton.width &&
-                ev.rawY >= loc[1] &&
-                ev.rawY < loc[1] + fullscreenCloseButton.height
-
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    pressedFullscreenClose = inside
-                    if (inside) return true
-                }
-
-                MotionEvent.ACTION_UP -> {
-                    val wasPressed = pressedFullscreenClose
-                    pressedFullscreenClose = false
-                    if (wasPressed) {
-                        if (inside) fullscreenCloseButton.performClick()
-                        return true
-                    }
-                }
-
-                MotionEvent.ACTION_CANCEL -> {
-                    pressedFullscreenClose = false
-                }
-            }
-        }
-
-        return super.dispatchTouchEvent(ev)
-    }
 
     override fun onResume() {
         super.onResume()
