@@ -16,7 +16,7 @@ data class ScriptAction(
     val y: Float = 0f,
     val x2: Float = 0f,
     val y2: Float = 0f,
-    val durationMs: Long = 500L
+    val durationMs: Long = 30L
 )
 
 data class ScriptDefinition(
@@ -69,7 +69,7 @@ object ScriptJson {
                             y = item.optDouble("y", 0.0).toFloat(),
                             x2 = item.optDouble("x2", 0.0).toFloat(),
                             y2 = item.optDouble("y2", 0.0).toFloat(),
-                            durationMs = item.optLong("durationMs", 500L).coerceAtLeast(0L)
+                            durationMs = item.optLong("durationMs", 30L).coerceAtLeast(0L)
                         )
                     )
                 }
