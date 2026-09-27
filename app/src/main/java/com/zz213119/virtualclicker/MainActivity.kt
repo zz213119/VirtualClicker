@@ -27,7 +27,6 @@ import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
 import com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
-import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -526,24 +525,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        FullscreenPreviewDialog(
-            activity = this,
-            displayId = displayId,
-            displayWidth = displayWidth,
-            displayHeight = displayHeight,
-            onClosed = {
-                val surface = previewSurface
-                if (currentDisplayId == displayId && surface?.isValid == true) {
-                    lifecycleScope.launch {
-                        withContext(Dispatchers.IO) {
-                            VirtualDisplayManager.setDisplaySurface(displayId, surface)
-                        }
-                    }
-                }
-            }
-        ).show()
+        val intent = Intent(this, com.zz213119.virtualclicker.ui.FullscreenPreviewActivity::class.java)
+            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_DISPLAY_ID, displayId)
+            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_DISPLAY_WIDTH, displayWidth)
+            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_DISPLAY_HEIGHT, displayHeight)
+            .putExtra(com.zz213119.virtualclicker.ui.FullscreenPreviewActivity.EXTRA_POINT_PICK_MODE, false)
+        startActivity(intent)
     }
-
     private fun handleManualTouch(view: View, event: MotionEvent) {
         val displayId = currentDisplayId
         if (displayId < 0) return
