@@ -307,6 +307,21 @@ class ScriptEditorActivity : AppCompatActivity() {
                             x.toInt() + ", " + y.toInt() + ")"
                     )
                 }
+            },
+            onPointMoved = { index, x, y ->
+                runOnUiThread {
+                    val row = rows.getOrNull(index)
+                    if (row != null) {
+                        row.x.setText(x.toInt().toString())
+                        row.y.setText(y.toInt().toString())
+                        ScriptRepository.saveLast(this, collectScript())
+                        lastPickedX = x
+                        lastPickedY = y
+                        findViewById<TextView>(R.id.scriptCoordinateStatus).text =
+                            "已调整动作 " + (index + 1) + "：X=" + x.toInt() + "  Y=" + y.toInt() +
+                                " · 长按球球可继续移动"
+                    }
+                }
             }
         ).show()
     }
