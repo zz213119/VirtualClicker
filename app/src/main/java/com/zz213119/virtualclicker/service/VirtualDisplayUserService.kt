@@ -81,7 +81,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             Log.w(TAG, "setVirtualDisplaySurface rejected: displayId=${displayId} is not managed")
             appendLog(
                 "SET SURFACE REJECTED",
-                "displayId=${displayId}\\nreason=display_not_managed"
+                "displayId=${displayId}\nreason=display_not_managed"
             )
             return false
         }
@@ -90,7 +90,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             Log.w(TAG, "setVirtualDisplaySurface rejected: invalid surface displayId=${displayId}")
             appendLog(
                 "SET SURFACE REJECTED",
-                "displayId=${displayId}\\nreason=invalid_surface"
+                "displayId=${displayId}\nreason=invalid_surface"
             )
             return false
         }
@@ -99,14 +99,14 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             vd.setSurface(surface)
             appendLog(
                 "SET SURFACE",
-                "displayId=${displayId}\\naction=${if (surface == null) "detach" else "attach"}"
+                "displayId=${displayId}\naction=${if (surface == null) "detach" else "attach"}"
             )
             true
         }.onFailure {
             Log.e(TAG, "setVirtualDisplaySurface failed for displayId=${displayId}", it)
             appendLog(
                 "SET SURFACE FAILED",
-                "displayId=${displayId}\\n${it.stackTraceToString()}"
+                "displayId=${displayId}\n${it.stackTraceToString()}"
             )
         }.getOrDefault(false)
     }
@@ -280,15 +280,15 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             Log.i(TAG, "cleanupDisplay: displayId=${displayId} already clean reason=${reason}")
             appendLog(
                 "RELEASE DISPLAY",
-                "displayId=${displayId}\\nreason=${reason}\\nalready_clean=true"
+                "displayId=${displayId}\nreason=${reason}\nalready_clean=true"
             )
             return
         }
 
         appendLog(
             "RELEASE DISPLAY",
-            "displayId=${displayId}\\nreason=${reason}\\n" +
-                "hadVirtualDisplay=${vd != null}\\nhadImageReader=${sink != null}"
+            "displayId=${displayId}\nreason=${reason}\n" +
+                "hadVirtualDisplay=${vd != null}\nhadImageReader=${sink != null}"
         )
 
         if (vd != null) {
@@ -296,14 +296,14 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 vd.setSurface(null)
             }.onFailure {
                 Log.w(TAG, "setSurface(null) failed for displayId=${displayId}", it)
-                appendLog("RELEASE SET_SURFACE_FAILED", "displayId=${displayId}\\n${it.stackTraceToString()}")
+                appendLog("RELEASE SET_SURFACE_FAILED", "displayId=${displayId}\n${it.stackTraceToString()}")
             }
 
             runCatching {
                 vd.release()
             }.onFailure {
                 Log.e(TAG, "VirtualDisplay.release failed for displayId=${displayId}", it)
-                appendLog("RELEASE FAILED", "displayId=${displayId}\\n${it.stackTraceToString()}")
+                appendLog("RELEASE FAILED", "displayId=${displayId}\n${it.stackTraceToString()}")
             }
         }
 
@@ -333,7 +333,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 Log.i(TAG, "displayId=${displayId} fully released after ${attempt * 50}ms")
                 appendLog(
                     "RELEASE DISPLAY SUCCESS",
-                    "displayId=${displayId}\\nwaitMs=${attempt * 50}"
+                    "displayId=${displayId}\nwaitMs=${attempt * 50}"
                 )
                 return
             }
@@ -351,7 +351,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         Log.w(TAG, "displayId=${displayId} still visible after release wait")
         appendLog(
             "RELEASE DISPLAY STILL_VISIBLE",
-            "displayId=${displayId}\\nwaitMs=500"
+            "displayId=${displayId}\nwaitMs=500"
         )
     }
 
@@ -492,10 +492,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     override fun injectMotionEvent(event: MotionEvent, displayId: Int): Boolean {
         if (!isDisplayManaged(displayId)) {
-            Log.w(TAG, "injectMotionEvent rejected: displayId=\${displayId} is not managed")
+            Log.w(TAG, "injectMotionEvent rejected: displayId=${displayId} is not managed")
             LogWriter.write(
                 "MOTION EVENT REJECTED",
-                "displayId=\${displayId}\\naction=\${event.actionMasked}\\nreason=display_not_managed"
+                "displayId=${displayId}\naction=${event.actionMasked}\nreason=display_not_managed"
             )
             return false
         }
@@ -577,14 +577,14 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
                     Log.i(
                         TAG,
-                        "injectMotionEvent displayId=\${displayId} " +
-                            "action=\${action} x=\${x} y=\${y} " +
-                            "mode=\${mode} accepted=\${accepted}"
+                        "injectMotionEvent displayId=${displayId} " +
+                            "action=${action} x=${x} y=${y} " +
+                            "mode=${mode} accepted=${accepted}"
                     )
                     LogWriter.write(
                         "MOTION EVENT",
-                        "displayId=\${displayId}\\naction=\${action}\\n" +
-                            "x=\${x}\\ny=\${y}\\nmode=\${mode}\\naccepted=\${accepted}"
+                        "displayId=${displayId}\naction=${action}\n" +
+                            "x=${x}\ny=${y}\nmode=${mode}\naccepted=${accepted}"
                     )
 
                     if (accepted &&
@@ -600,12 +600,12 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             }.onFailure {
                 Log.e(
                     TAG,
-                    "injectMotionEvent failed displayId=\${displayId} action=\${event.actionMasked}",
+                    "injectMotionEvent failed displayId=${displayId} action=${event.actionMasked}",
                     it
                 )
                 LogWriter.write(
                     "MOTION EVENT INJECT FAILED",
-                    "displayId=\${displayId}\\naction=\${event.actionMasked}\\n\${it.stackTraceToString()}"
+                    "displayId=${displayId}\naction=${event.actionMasked}\n${it.stackTraceToString()}"
                 )
             }.getOrDefault(false)
         }
