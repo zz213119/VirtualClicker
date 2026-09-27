@@ -403,22 +403,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addCoordinateMarker(x: Float, y: Float) {
+        val markerNumber = nextCoordinateMarkerNumber++
         val marker = com.zz213119.virtualclicker.ui.CoordinateMarkerView(
             this,
-            nextCoordinateMarkerNumber++
-        ) { markerPxX, markerPxY ->
-            val parentWidth = previewContainer.width.coerceAtLeast(1)
-            val parentHeight = previewContainer.height.coerceAtLeast(1)
-            val coordinateX = (markerPxX / parentWidth * displayWidth)
-                .coerceIn(0f, (displayWidth - 1).toFloat())
-            val coordinateY = (markerPxY / parentHeight * displayHeight)
-                .coerceIn(0f, (displayHeight - 1).toFloat())
+            markerNumber,
+            onMoved = { markerPxX, markerPxY ->
+                val parentWidth = previewContainer.width.coerceAtLeast(1)
+                val parentHeight = previewContainer.height.coerceAtLeast(1)
+                val coordinateX = (markerPxX / parentWidth * displayWidth)
+                    .coerceIn(0f, (displayWidth - 1).toFloat())
+                val coordinateY = (markerPxY / parentHeight * displayHeight)
+                    .coerceIn(0f, (displayHeight - 1).toFloat())
 
-            inputX.setText(coordinateX.roundToInt().toString())
-            inputY.setText(coordinateY.roundToInt().toString())
-            pickCoordinateStatus.text =
-                "已调整坐标：X=${coordinateX.roundToInt()}  Y=${coordinateY.roundToInt()} · 长按拖动中"
-        }
+                inputX.setText(coordinateX.roundToInt().toString())
+                inputY.setText(coordinateY.roundToInt().toString())
+                pickCoordinateStatus.text =
+                    "已调整坐标：X=" + coordinateX.roundToInt() + "  Y=" + coordinateY.roundToInt() + " · 长按拖动中"
+            },
+            onTapped = { markerPxX, markerPxY ->
+                // Tapping an existing marker adds another marker at the same
+                // coordinate, so identical points are allowed.
+                val parentWidth = previewContainer.width.coerceAtLeast(1)
+                val parentHeight = previewContainer.height.coerceAtLeast(1)
+                val coordinateX = (markerPxX / parentWidth * displayWidth)
+                    .coerceIn(0f, (displayWidth - 1).toFloat())
+                val coordinateY = (markerPxY / parentHeight * displayHeight)
+                    .coerceIn(0f, (displayHeight - 1).toFloat())
+                addCoordinateMarker(coordinateX, coordinateY)
+                inputX.setText(coordinateX.roundToInt().toString())
+                inputY.setText(coordinateY.roundToInt().toString())
+            }
+        )
 
         coordinateMarkers += marker
         previewContainer.addView(marker)
@@ -430,6 +445,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
     }
+
     private fun clearCoordinateMarkers() {
         coordinateMarkers.forEach { previewContainer.removeView(it) }
         coordinateMarkers.clear()
