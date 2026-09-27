@@ -7,8 +7,8 @@ import android.graphics.Matrix
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.view.Surface
+import android.view.TextureView
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
@@ -30,7 +30,8 @@ class FullscreenPreviewActivity : Activity() {
     private var displayWidth = 1080
     private var displayHeight = 1920
     private var pointPickMode = false
-    private lateinit var surface: SurfaceView
+    private lateinit var surface: TextureView
+    private var previewSurface: Surface? = null
     private lateinit var hint: TextView
     private lateinit var modeButton: TextView
     private lateinit var closeButton: TextView
@@ -69,8 +70,7 @@ class FullscreenPreviewActivity : Activity() {
             this,
             displayWidth.toFloat() / displayHeight.toFloat()
         )
-        surface = SurfaceView(this)
-        surface.holder.setFixedSize(displayWidth, displayHeight)
+        surface = TextureView(this)
         preview.addView(
             surface,
             FrameLayout.LayoutParams(
@@ -148,18 +148,32 @@ class FullscreenPreviewActivity : Activity() {
 
         setContentView(root)
 
-        surface.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                holder.setFixedSize(displayWidth, displayHeight)
-                attachSurface(holder.surface)
+        surface.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(
+                surfaceTexture: android.graphics.SurfaceTexture,
+                width: Int,
+                height: Int
+            ) {
+                surfaceTexture.setDefaultBufferSize(displayWidth, displayHeight)
+                previewSurface = Surface(surfaceTexture)
+                attachSurface(previewSurface!!)
             }
 
-            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+            override fun onSurfaceTextureSizeChanged(
+                surfaceTexture: android.graphics.SurfaceTexture,
+                width: Int,
+                height: Int
+            ) = Unit
 
-            override fun surfaceDestroyed(holder: SurfaceHolder) {
+            override fun onSurfaceTextureDestroyed(surfaceTexture: android.graphics.SurfaceTexture): Boolean {
                 detachSurface()
+                previewSurface?.release()
+                previewSurface = null
+                return true
             }
-        })
+
+            override fun onSurfaceTextureUpdated(surfaceTexture: android.graphics.SurfaceTexture) = Unit
+        }
 
         surface.setOnTouchListener { view, event ->
             val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
@@ -226,8 +240,8 @@ class FullscreenPreviewActivity : Activity() {
                 pressedControl = 0
                 if (target != 0) {
                     when (target) {
-                        1 -> if (controlAt(ev.rawX, ev.rawY) == 1) closeButton.performClick()
-                        2 -> if (controlAt(ev.rawX, ev.rawY) == 2) modeButton.performClick()
+                        1 -> closeButton.performClick()
+                        2 -> modeButton.performClick()
                     }
                     return true
                 }
@@ -256,6 +270,8 @@ class FullscreenPreviewActivity : Activity() {
     override fun onDestroy() {
         CoordinatePickBus.listener = null
         detachSurface()
+        previewSurface?.release()
+        previewSurface = null
         super.onDestroy()
     }
 
