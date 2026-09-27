@@ -385,6 +385,7 @@ class ScriptEditorActivity : AppCompatActivity() {
                 val selectedName = names[which]
                 val script = ScriptRepository.load(this, selectedName)
                 if (script != null) {
+                    ScriptRepository.rememberLast(this, selectedName)
                     loadScriptIntoEditor(script)
                     updateStatus(
                         "已切换到脚本：" + script.name +
