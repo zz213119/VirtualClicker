@@ -12,6 +12,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.Window
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -36,7 +37,8 @@ class FullscreenPreviewDialog(
     private val displayHeight: Int,
     private val onClosed: () -> Unit,
     private val onPointPicked: ((Float, Float) -> Unit)? = null,
-    private val onPointMoved: ((Int, Float, Float) -> Unit)? = null
+    private val onPointMoved: ((Int, Float, Float) -> Unit)? = null,
+    private val onSwipeRecorded: ((Float, Float, Float, Float, Long) -> Unit)? = null
 ) : Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
 
     private var touchDownX = 0f
@@ -47,6 +49,11 @@ class FullscreenPreviewDialog(
     private val coordinateMarkers = mutableListOf<CoordinateMarkerView>()
     private var nextMarkerNumber = 1
     private lateinit var previewContainer: AspectRatioFrameLayout
+
+    private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
+    private var pickDownX = 0f
+    private var pickDownY = 0f
+    private var pickMoved = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,7 +105,7 @@ class FullscreenPreviewDialog(
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setBackgroundColor(0x99000000.toInt())
-            text = if (pointPickMode) "取点模式：点击画面查看 X / Y" else "手动控制模式"
+            text = if (pointPickMode) "取点模式：点击记录点击；拖动记录滑动" else "手动控制模式"
         }
         root.addView(
             coordinateHint,
@@ -127,7 +134,7 @@ class FullscreenPreviewDialog(
                     pointPickMode = !pointPickMode
                     text = if (pointPickMode) "结束取点" else "取点坐标"
                     coordinateHint.text = if (pointPickMode) {
-                        "取点模式：点击画面查看 X / Y"
+                        "取点模式：点击记录点击；拖动记录滑动"
                     } else {
                         "手动控制模式：点击/滑动会发送到目标应用"
                     }
@@ -196,13 +203,52 @@ class FullscreenPreviewDialog(
             val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
 
             if (pointPickMode) {
-                if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    val x = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
-                    val y = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
-                    coordinateHint.text =
-                        "坐标：X=" + x.toInt() + "  Y=" + y.toInt() + " · 长按球球可移动"
-                    addCoordinateMarker(x, y)
-                    onPointPicked?.invoke(x, y)
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        pickDownX = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
+                        pickDownY = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
+                        pickMoved = false
+                    }
+
+                    MotionEvent.ACTION_MOVE -> {
+                        val x = event.x * scaleX
+                        val y = event.y * scaleY
+                        if (hypot(x - pickDownX, y - pickDownY) > touchSlop) {
+                            pickMoved = true
+                        }
+                    }
+
+                    MotionEvent.ACTION_UP -> {
+                        val x = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
+                        val y = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
+
+                        if (pickMoved) {
+                            val durationMs =
+                                (event.eventTime - event.downTime).coerceAtLeast(1L)
+                            coordinateHint.text =
+                                "滑动：(" + pickDownX.toInt() + ", " + pickDownY.toInt() +
+                                    ") → (" + x.toInt() + ", " + y.toInt() +
+                                    ") · " + durationMs + "ms"
+                            onSwipeRecorded?.invoke(
+                                pickDownX,
+                                pickDownY,
+                                x,
+                                y,
+                                durationMs
+                            )
+                        } else {
+                            coordinateHint.text =
+                                "坐标：X=" + x.toInt() + "  Y=" + y.toInt() + " · 长按球球可移动"
+                            addCoordinateMarker(x, y)
+                            onPointPicked?.invoke(x, y)
+                        }
+
+                        pickMoved = false
+                    }
+
+                    MotionEvent.ACTION_CANCEL -> {
+                        pickMoved = false
+                    }
                 }
                 return@setOnTouchListener true
             }
