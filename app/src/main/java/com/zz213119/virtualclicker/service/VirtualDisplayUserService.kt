@@ -554,10 +554,6 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }.getOrDefault(false)
     }
 
-    private companion object {
-        const val INJECT_INPUT_EVENT_MODE_ASYNC = 0
-        const val INJECT_INPUT_EVENT_MODE_WAIT_FOR_RESULT = 1
-    }
 
     private fun isDisplayManaged(displayId: Int): Boolean {
         return displays.containsKey(displayId)
@@ -679,5 +675,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     companion object {
         private const val TAG = "VDUserService"
         private const val APP_PACKAGE = "com.zz213119.virtualclicker"
+        private const val INJECT_INPUT_EVENT_MODE_ASYNC = 0
+        private const val INJECT_INPUT_EVENT_MODE_WAIT_FOR_RESULT = 1
     }
 }
