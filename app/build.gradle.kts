@@ -16,7 +16,19 @@ android {
         versionName = "0.1.0-dev"
     }
 
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = rootProject.file("stable-debug.jks")
+            storePassword = "vcdebug"
+            keyAlias = "vcdebug"
+            keyPassword = "vcdebug"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stableDebug")
+        }
         release {
             isMinifyEnabled = false
         }
