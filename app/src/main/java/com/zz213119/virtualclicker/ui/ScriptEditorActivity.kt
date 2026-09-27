@@ -342,6 +342,13 @@ class ScriptEditorActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (CoordinatePickBus.listener != null) {
+            CoordinatePickBus.listener = null
+        }
+        super.onDestroy()
+    }
+
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 }
