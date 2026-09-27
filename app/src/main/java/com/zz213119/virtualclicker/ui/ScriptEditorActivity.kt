@@ -176,7 +176,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         val y = numberField("Y", action.y)
         val x2 = numberField("终点 X", action.x2)
         val y2 = numberField("终点 Y", action.y2)
-        val duration = numberField("时长 / 等待(ms)", action.durationMs)
+        val duration = numberField(durationHint(action.type), action.durationMs)
 
         root.addView(x)
         root.addView(y)
@@ -223,8 +223,19 @@ class ScriptEditorActivity : AppCompatActivity() {
         row.y.visibility = if (type == ScriptActionType.WAIT) View.GONE else View.VISIBLE
         row.x2.visibility = if (type == ScriptActionType.SWIPE) View.VISIBLE else View.GONE
         row.y2.visibility = if (type == ScriptActionType.SWIPE) View.VISIBLE else View.GONE
-        row.duration.visibility =
-            if (type == ScriptActionType.CLICK) View.GONE else View.VISIBLE
+
+        // Every action that has a duration exposes it. For CLICK this is the
+        // finger-down time, e.g. 30ms; LONG_PRESS/SWIPE/WAIT retain their
+        // respective duration meanings.
+        row.duration.visibility = View.VISIBLE
+        row.duration.hint = durationHint(type)
+    }
+
+    private fun durationHint(type: ScriptActionType): String = when (type) {
+        ScriptActionType.CLICK -> "按下时间(ms)"
+        ScriptActionType.LONG_PRESS -> "长按时间(ms)"
+        ScriptActionType.SWIPE -> "滑动时间(ms)"
+        ScriptActionType.WAIT -> "等待时间(ms)"
     }
 
     private fun typeToIndex(type: ScriptActionType): Int = when (type) {
