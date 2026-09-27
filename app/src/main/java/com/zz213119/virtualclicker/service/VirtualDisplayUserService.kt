@@ -237,7 +237,6 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 val taskId = findTaskForPackageOnDisplay(packageName, displayId)
                 if (taskId != null) {
                     sessions[displayId] = DisplaySession(packageName, taskId)
-                    focusTaskOnDisplay(displayId, taskId)
                     appendLog(
                         "TASK SESSION CREATED",
                         "displayId=$displayId\npackage=$packageName\ntaskId=$taskId"
@@ -490,6 +489,22 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     // here matches the proven shell/UserService approach used by MAA-Meow.
     private val gestureLock = Any()
     private val gestureDownTimes = ConcurrentHashMap<Int, Long>()
+    @Volatile
+    private var touchscreenDeviceId: Int? = null
+
+    private fun resolveTouchscreenDeviceId(): Int {
+        touchscreenDeviceId?.let { return it }
+        val id = runCatching {
+            android.view.InputDevice.getDeviceIds()
+                .asSequence()
+                .mapNotNull { deviceId -> android.view.InputDevice.getDevice(deviceId) }
+                .firstOrNull { it.supportsSource(android.view.InputDevice.SOURCE_TOUCHSCREEN) }
+                ?.id
+                ?: 0
+        }.getOrDefault(0)
+        touchscreenDeviceId = id
+        return id
+    }
 
     override fun injectMotionEvent(event: MotionEvent, displayId: Int): Boolean {
         if (!isDisplayManaged(displayId)) {
@@ -511,11 +526,6 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 // Opening the fullscreen preview moves the phone's foreground
                 // Activity to the primary display. Re-focus the target task on
                 // the virtual display when a new gesture starts.
-                if (action == MotionEvent.ACTION_DOWN) {
-                    sessions[displayId]?.taskId?.let { taskId ->
-                        focusTaskOnDisplay(displayId, taskId)
-                    }
-                }
 
                 val downTime = when (action) {
                     MotionEvent.ACTION_DOWN -> {
@@ -549,10 +559,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     0,
                     1f,
                     1f,
-                    0,
+                    resolveTouchscreenDeviceId(),
                     0,
                     android.view.InputDevice.SOURCE_TOUCHSCREEN,
-                    0
+                    displayId
                 )
 
                 try {
@@ -576,11 +586,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     // The first DOWN is synchronized with InputDispatcher so the
                     // following MOVE/UP events have a guaranteed gesture target.
                     // MOVE/UP remain asynchronous for low latency.
-                    val mode = if (action == MotionEvent.ACTION_DOWN) {
-                        2 // INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
-                    } else {
-                        INJECT_INPUT_EVENT_MODE_ASYNC
-                    }
+                    val mode = 2 // INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
 
                     val accepted =
                         (inject.invoke(inputManager, synthetic, mode) as? Boolean) ?: false
@@ -623,52 +629,6 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
 
 
-    private fun focusTaskOnDisplay(displayId: Int, taskId: Int): Boolean {
-        if (taskId < 0 || !isDisplayManaged(displayId)) return false
-        return runCatching {
-            val atmsClass = Class.forName("android.app.ActivityTaskManager")
-            val getService = atmsClass.getDeclaredMethod("getService")
-            val atms = getService.invoke(null)
-                ?: throw IllegalStateException("ActivityTaskManager unavailable")
-
-            var focused = false
-
-            runCatching {
-                val setFocusedTask = atms.javaClass.getMethod(
-                    "setFocusedTask",
-                    Int::class.javaPrimitiveType
-                )
-                setFocusedTask.invoke(atms, taskId)
-                focused = true
-            }.onFailure {
-                Log.w(TAG, "setFocusedTask failed taskId=" + taskId + " displayId=" + displayId, it)
-            }
-
-            runCatching {
-                val focusTopTask = atms.javaClass.getMethod(
-                    "focusTopTask",
-                    Int::class.javaPrimitiveType
-                )
-                focusTopTask.invoke(atms, displayId)
-                focused = true
-            }.onFailure {
-                Log.w(TAG, "focusTopTask failed displayId=" + displayId, it)
-            }
-
-            Log.i(TAG, "focusTaskOnDisplay displayId=" + displayId + " taskId=" + taskId + " focused=" + focused)
-            LogWriter.write(
-                "FOCUS TASK",
-                "displayId=" + displayId + "\ntaskId=" + taskId + "\nfocused=" + focused
-            )
-            focused
-        }.onFailure {
-            Log.e(TAG, "focusTaskOnDisplay failed displayId=" + displayId + " taskId=" + taskId, it)
-            LogWriter.write(
-                "FOCUS TASK FAILED",
-                "displayId=" + displayId + "\ntaskId=" + taskId + "\n" + it.stackTraceToString()
-            )
-        }.getOrDefault(false)
-    }
     private fun isDisplayManaged(displayId: Int): Boolean {
         return displays.containsKey(displayId)
     }
