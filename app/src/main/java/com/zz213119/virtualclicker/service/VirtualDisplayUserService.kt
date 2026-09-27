@@ -8,6 +8,8 @@ import android.media.ImageReader
 import android.os.Process
 import android.os.Build
 import android.util.Log
+import android.view.InputEvent
+import android.view.MotionEvent
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -474,6 +476,41 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             return false
         }
         return inputEngine.swipe(displayId, x1, y1, x2, y2, durationMs)
+    }
+
+    /**
+     * Inject the actual touch stream into the target display. This avoids
+     * spawning the shell input process for every gesture and preserves MOVE
+     * events for responsive swipes.
+     */
+    override fun injectMotionEvent(event: MotionEvent, displayId: Int): Boolean {
+        if (!isDisplayManaged(displayId)) return false
+
+        return runCatching {
+            MotionEvent::class.java.getMethod(
+                "setDisplayId",
+                Int::class.javaPrimitiveType
+            ).invoke(event, displayId)
+
+            val inputManager = Class.forName("android.hardware.input.InputManager")
+                .getMethod("getInstance")
+                .invoke(null)
+
+            val inject = inputManager.javaClass.getMethod(
+                "injectInputEvent",
+                InputEvent::class.java,
+                Int::class.javaPrimitiveType
+            )
+
+            // 0 = INJECT_INPUT_EVENT_MODE_ASYNC.
+            (inject.invoke(inputManager, event, 0) as? Boolean) ?: true
+        }.onFailure {
+            Log.e(TAG, "injectMotionEvent failed displayId=$displayId action=${event.action}", it)
+            LogWriter.write(
+                "MOTION EVENT INJECT FAILED",
+                "displayId=$displayId\naction=${event.action}\n${it.stackTraceToString()}"
+            )
+        }.getOrDefault(false)
     }
 
     private fun isDisplayManaged(displayId: Int): Boolean {
