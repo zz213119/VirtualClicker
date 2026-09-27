@@ -352,24 +352,13 @@ class MainActivity : AppCompatActivity() {
         gameMode = !gameMode
 
         if (gameMode) {
-            // 4:3 is intended for game-style landscape control. Force the
-            // controller Activity itself into landscape so the fullscreen
-            // preview no longer sits inside a tall portrait window.
+            // 4:3 changes only the Virtual Display geometry. The controller
+            // Activity stays in its current orientation.
             displayLandscape = true
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         } else {
-            // Restore the target app's natural orientation when leaving
-            // 4:3 mode. Fall back to normal system orientation when unknown.
+            // Leaving 4:3 restores the target app's natural display geometry.
             detectedTargetLandscape?.let { landscape ->
                 displayLandscape = landscape
-                requestedOrientation =
-                    if (landscape) {
-                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                    } else {
-                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    }
-            } ?: run {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             }
         }
 
@@ -561,33 +550,20 @@ class MainActivity : AppCompatActivity() {
 
         val scaleX = displayWidth.toFloat() / view.width.coerceAtLeast(1)
         val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                touchDownX = event.x
-                touchDownY = event.y
-                touchDownTime = System.currentTimeMillis()
-            }
-            MotionEvent.ACTION_UP -> {
-                val dx = event.x - touchDownX
-                val dy = event.y - touchDownY
-                val distance = kotlin.math.hypot(dx, dy)
-                val duration = (System.currentTimeMillis() - touchDownTime).coerceIn(1, 30000)
-                val startX = touchDownX * scaleX
-                val startY = touchDownY * scaleY
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        if (distance < 24f) {
-                            VirtualDisplayManager.tap(displayId, startX, startY)
-                        } else {
-                            val endX = event.x * scaleX
-                            val endY = event.y * scaleY
-                            VirtualDisplayManager.swipe(
-                                displayId, startX, startY, endX, endY, duration.toInt()
-                            )
-                        }
-                    }
-                }
-            }
+
+        // Forward the complete touch stream to the Virtual Display so MOVE
+        // events are continuous. The old implementation waited for ACTION_UP
+        // and converted the whole gesture into one shell command, which added
+        // noticeable latency and could lose swipes.
+        val transformed = MotionEvent.obtain(event)
+        transformed.transform(android.graphics.Matrix().apply {
+            setScale(scaleX, scaleY)
+        })
+        val ok = VirtualDisplayManager.injectMotionEvent(transformed, displayId)
+        transformed.recycle()
+
+        if (!ok && event.actionMasked != MotionEvent.ACTION_MOVE) {
+            inputTestStatus.text = "手动输入注入失败，请查看日志"
         }
     }
 
