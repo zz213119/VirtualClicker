@@ -234,20 +234,37 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // denied warnings); treat an explicit Error: line as failure too.
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
             if (ok) {
-                val taskId = findTaskForPackageOnDisplay(packageName, displayId)
-                if (taskId != null) {
-                    sessions[displayId] = DisplaySession(packageName, taskId)
-                    appendLog(
-                        "TASK SESSION CREATED",
-                        "displayId=$displayId\npackage=$packageName\ntaskId=$taskId"
-                    )
-                } else {
-                    Log.w(TAG, "could not resolve launched task for package=$packageName displayId=$displayId")
-                    appendLog(
-                        "TASK SESSION NOT_FOUND",
-                        "displayId=$displayId\npackage=$packageName"
-                    )
-                }
+                // Task discovery is diagnostic/cleanup metadata, not part of the
+                // launch critical path. Android 16/OEM task enumeration can lag
+                // behind am start, so do it asynchronously instead of delaying
+                // the Surface/render pipeline by up to ~2 seconds.
+                Thread {
+                    runCatching {
+                        Thread.sleep(300)
+                        if (!displays.containsKey(displayId)) return@runCatching
+
+                        val taskId = findTaskForPackageOnDisplay(packageName, displayId)
+                        if (taskId != null && displays.containsKey(displayId)) {
+                            sessions[displayId] = DisplaySession(packageName, taskId)
+                            appendLog(
+                                "TASK SESSION CREATED",
+                                "displayId=${displayId}\npackage=${packageName}\ntaskId=${taskId}"
+                            )
+                        } else {
+                            Log.w(TAG, "could not resolve launched task for package=${packageName} displayId=${displayId}")
+                            appendLog(
+                                "TASK SESSION NOT_FOUND",
+                                "displayId=${displayId}\npackage=${packageName}"
+                            )
+                        }
+                    }.onFailure {
+                        Log.e(TAG, "async task discovery failed for package=${packageName} displayId=${displayId}", it)
+                        appendLog(
+                            "TASK SESSION LOOKUP FAILED",
+                            "displayId=${displayId}\npackage=${packageName}\n${it.stackTraceToString()}"
+                        )
+                    }
+                }.start()
             }
             ok
         } catch (e: Throwable) {
