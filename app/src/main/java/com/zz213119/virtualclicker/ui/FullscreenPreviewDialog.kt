@@ -224,15 +224,29 @@ class FullscreenPreviewDialog(
 
     private fun addCoordinateMarker(x: Float, y: Float) {
         val number = nextMarkerNumber++
-        val marker = CoordinateMarkerView(context, number) { px, py ->
-            val parentWidth = previewContainer.width.coerceAtLeast(1)
-            val parentHeight = previewContainer.height.coerceAtLeast(1)
-            val coordinateX = (px / parentWidth * displayWidth).coerceIn(0f, displayWidth - 1f)
-            val coordinateY = (py / parentHeight * displayHeight).coerceIn(0f, displayHeight - 1f)
-            coordinateHint.text =
-                "已调整：X=" + coordinateX.toInt() + "  Y=" + coordinateY.toInt() + " · 长按拖动中"
-            onPointMoved?.invoke(number - 1, coordinateX, coordinateY)
-        }
+        val marker = CoordinateMarkerView(
+            context,
+            number,
+            onMoved = { px, py ->
+                val parentWidth = previewContainer.width.coerceAtLeast(1)
+                val parentHeight = previewContainer.height.coerceAtLeast(1)
+                val coordinateX = (px / parentWidth * displayWidth).coerceIn(0f, displayWidth - 1f)
+                val coordinateY = (py / parentHeight * displayHeight).coerceIn(0f, displayHeight - 1f)
+                coordinateHint.text =
+                    "已调整：X=" + coordinateX.toInt() + "  Y=" + coordinateY.toInt() + " · 长按拖动中"
+                onPointMoved?.invoke(number - 1, coordinateX, coordinateY)
+            },
+            onTapped = { px, py ->
+                // A tap on an existing marker is still a valid picker tap.
+                // Create another marker at exactly the same position.
+                val parentWidth = previewContainer.width.coerceAtLeast(1)
+                val parentHeight = previewContainer.height.coerceAtLeast(1)
+                val coordinateX = (px / parentWidth * displayWidth).coerceIn(0f, displayWidth - 1f)
+                val coordinateY = (py / parentHeight * displayHeight).coerceIn(0f, displayHeight - 1f)
+                addCoordinateMarker(coordinateX, coordinateY)
+                onPointPicked?.invoke(coordinateX, coordinateY)
+            }
+        )
         coordinateMarkers += marker
         previewContainer.addView(marker)
         marker.post {
