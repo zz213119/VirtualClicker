@@ -21,9 +21,9 @@ class CoordinateMarkerView(
     private val onMoved: (Float, Float) -> Unit
 ) : View(context) {
 
-    var coordinateX: Float = 0f
+    var normalizedX: Float = 0f
         private set
-    var coordinateY: Float = 0f
+    var normalizedY: Float = 0f
         private set
 
     private val density = resources.displayMetrics.density
@@ -124,8 +124,8 @@ class CoordinateMarkerView(
 
                     val centerX = (x + width / 2f).coerceIn(0f, parent.width.toFloat())
                     val centerY = (y + height / 2f).coerceIn(0f, parent.height.toFloat())
-                    coordinateX = centerX / parent.width.coerceAtLeast(1) * parent.width
-                    coordinateY = centerY / parent.height.coerceAtLeast(1) * parent.height
+                    normalizedX = (centerX / parent.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    normalizedY = (centerY / parent.height.coerceAtLeast(1)).coerceIn(0f, 1f)
                     onMoved(centerX, centerY)
                 }
                 return true
@@ -145,25 +145,14 @@ class CoordinateMarkerView(
         return true
     }
 
-    fun setCoordinate(x: Float, y: Float) {
-        coordinateX = x
-        coordinateY = y
+    fun setNormalizedPosition(x: Float, y: Float) {
+        normalizedX = x.coerceIn(0f, 1f)
+        normalizedY = y.coerceIn(0f, 1f)
         val parent = parent as? View ?: return
-        if (parent.width <= 0 || parent.height <= 0) return
         post {
-            x = (coordinateX / parent.width * parent.width - width / 2f)
-                .coerceIn(-width / 2f, parent.width - width / 2f)
-            y = (coordinateY / parent.height * parent.height - height / 2f)
-                .coerceIn(-height / 2f, parent.height - height / 2f)
+            this.x = normalizedX * parent.width - width / 2f
+            this.y = normalizedY * parent.height - height / 2f
         }
-    }
-
-    fun updateCoordinateFromPosition(parentWidth: Int, parentHeight: Int) {
-        if (parentWidth <= 0 || parentHeight <= 0) return
-        coordinateX = ((x + width / 2f) / parentWidth * parentWidth)
-            .coerceIn(0f, parentWidth.toFloat())
-        coordinateY = ((y + height / 2f) / parentHeight * parentHeight)
-            .coerceIn(0f, parentHeight.toFloat())
     }
 
     override fun performClick(): Boolean {
