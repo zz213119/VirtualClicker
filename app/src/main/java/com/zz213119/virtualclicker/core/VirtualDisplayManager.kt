@@ -107,6 +107,14 @@ object VirtualDisplayManager {
             .onFailure { Log.e(TAG, "release failed", it) }
     }
 
+    /** 让虚拟屏忽略目标 App 自己声明的方向，按虚拟屏本身的宽高比渲染——
+     *  用于游戏模式(4:3 横屏)：不加这个，App 会在横屏形状的虚拟屏里继续按
+     *  竖屏渲染，上下留黑边。 */
+    fun setIgnoreOrientationRequest(displayId: Int, ignore: Boolean): Boolean =
+        runCatching { service?.setIgnoreOrientationRequest(displayId, ignore) ?: false }
+            .onFailure { Log.e(TAG, "setIgnoreOrientationRequest failed", it) }
+            .getOrDefault(false)
+
     fun tap(displayId: Int, x: Float, y: Float): Boolean =
         runCatching { service?.tap(displayId, x, y) ?: false }
             .onFailure { Log.e(TAG, "tap failed", it) }

@@ -259,6 +259,28 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         cleanupDisplay(displayId, "explicit_release")
     }
 
+    override fun setIgnoreOrientationRequest(displayId: Int, ignore: Boolean): Boolean {
+        return try {
+            val cmd = arrayOf(
+                "cmd", "window", "set-ignore-orientation-request",
+                "-d", displayId.toString(), ignore.toString()
+            )
+            val proc = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+            val output = proc.inputStream.bufferedReader().readText()
+            val exit = proc.waitFor()
+            Log.i(TAG, "set-ignore-orientation-request displayId=$displayId ignore=$ignore exit=$exit output=$output")
+            appendLog(
+                "SET IGNORE ORIENTATION",
+                "displayId=$displayId\nignore=$ignore\nexit=$exit\noutput=$output"
+            )
+            exit == 0
+        } catch (e: Throwable) {
+            Log.e(TAG, "setIgnoreOrientationRequest failed", e)
+            appendLog("SET IGNORE ORIENTATION FAILED", e.stackTraceToString())
+            false
+        }
+    }
+
     /**
      * VirtualDisplay owns a Surface connection into SurfaceFlinger. Detach
      * that surface first, then release the VirtualDisplay, then close any

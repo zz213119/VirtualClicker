@@ -700,6 +700,16 @@ class MainActivity : AppCompatActivity() {
 
             currentDisplayId = displayId
             setPreviewRunning(true)
+
+            if (gameMode) {
+                // 游戏模式(4:3)：虚拟屏是横屏形状，但很多 App 自己声明的是竖屏
+                // 方向，不加这一步系统只会把竖屏内容居中塞进横屏画布、上下留黑
+                // 边。这行让系统忽略 App 自己的方向声明，改用虚拟屏的实际形状。
+                withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.setIgnoreOrientationRequest(displayId, true)
+                }
+            }
+
             virtualDisplayStatus.text = "虚拟屏 #$displayId 已创建，正在启动 $pkg…"
 
             val ok = withContext(Dispatchers.IO) {

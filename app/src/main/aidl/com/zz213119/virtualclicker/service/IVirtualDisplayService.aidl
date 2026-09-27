@@ -32,6 +32,14 @@ interface IVirtualDisplayService {
     // Releases a display created by this service.
     void releaseVirtualDisplay(int displayId);
 
+    // Tells WindowManager to ignore the launched app's own requested
+    // orientation on this display and instead match the display's actual
+    // shape (landscape width>height => landscape content). Without this,
+    // portrait-locked apps get letterboxed (black bars) inside a
+    // landscape-shaped virtual display instead of actually rendering
+    // landscape content.
+    boolean setIgnoreOrientationRequest(int displayId, boolean ignore);
+
     // Sends a single touchscreen tap to the target virtual display.
     boolean tap(int displayId, float x, float y);
 
