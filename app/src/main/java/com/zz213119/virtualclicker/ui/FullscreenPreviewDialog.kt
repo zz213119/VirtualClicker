@@ -35,7 +35,8 @@ class FullscreenPreviewDialog(
     private val displayWidth: Int,
     private val displayHeight: Int,
     private val onClosed: () -> Unit,
-    private val onPointPicked: ((Float, Float) -> Unit)? = null
+    private val onPointPicked: ((Float, Float) -> Unit)? = null,
+    private val onPointMoved: ((Int, Float, Float) -> Unit)? = null
 ) : Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
 
     private var touchDownX = 0f
@@ -43,6 +44,9 @@ class FullscreenPreviewDialog(
     private var touchDownTime = 0L
     private var pointPickMode = onPointPicked != null
     private lateinit var coordinateHint: TextView
+    private val coordinateMarkers = mutableListOf<CoordinateMarkerView>()
+    private var nextMarkerNumber = 1
+    private lateinit var previewContainer: AspectRatioFrameLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,7 +74,7 @@ class FullscreenPreviewDialog(
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
         }
-        val preview = AspectRatioFrameLayout(
+        previewContainer = AspectRatioFrameLayout(
             context,
             displayWidth.toFloat() / displayHeight.toFloat()
         )
@@ -79,11 +83,11 @@ class FullscreenPreviewDialog(
         // SurfaceView implementations keep the fullscreen window buffer size
         // and the VirtualDisplay output can be cropped or scaled incorrectly.
         surface.holder.setFixedSize(displayWidth, displayHeight)
-        preview.addView(surface, FrameLayout.LayoutParams(
+        previewContainer.addView(surface, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
-        root.addView(preview, FrameLayout.LayoutParams(
+        root.addView(previewContainer, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
             Gravity.CENTER
@@ -155,6 +159,7 @@ class FullscreenPreviewDialog(
             marginEnd = 16.dp
         })
         setContentView(root)
+        previewContainer.post { repositionMarkers() }
 
         surface.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -191,10 +196,12 @@ class FullscreenPreviewDialog(
             val scaleY = displayHeight.toFloat() / view.height.coerceAtLeast(1)
 
             if (pointPickMode) {
-                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
                     val x = (event.x * scaleX).coerceIn(0f, displayWidth - 1f)
                     val y = (event.y * scaleY).coerceIn(0f, displayHeight - 1f)
-                    coordinateHint.text = "坐标：X=" + x.toInt() + "  Y=" + y.toInt()
+                    coordinateHint.text =
+                        "坐标：X=" + x.toInt() + "  Y=" + y.toInt() + " · 长按球球可移动"
+                    addCoordinateMarker(x, y)
                     onPointPicked?.invoke(x, y)
                 }
                 return@setOnTouchListener true
@@ -215,8 +222,35 @@ class FullscreenPreviewDialog(
         }
     }
 
+    private fun addCoordinateMarker(x: Float, y: Float) {
+        val number = nextMarkerNumber++
+        val marker = CoordinateMarkerView(context, number) { px, py ->
+            val parentWidth = previewContainer.width.coerceAtLeast(1)
+            val parentHeight = previewContainer.height.coerceAtLeast(1)
+            val coordinateX = (px / parentWidth * displayWidth).coerceIn(0f, displayWidth - 1f)
+            val coordinateY = (py / parentHeight * displayHeight).coerceIn(0f, displayHeight - 1f)
+            coordinateHint.text =
+                "已调整：X=" + coordinateX.toInt() + "  Y=" + coordinateY.toInt() + " · 长按拖动中"
+            onPointMoved?.invoke(number - 1, coordinateX, coordinateY)
+        }
+        coordinateMarkers += marker
+        previewContainer.addView(marker)
+        marker.post {
+            marker.setNormalizedPosition(
+                x / displayWidth.coerceAtLeast(1),
+                y / displayHeight.coerceAtLeast(1)
+            )
+        }
+    }
+
+    private fun repositionMarkers() {
+        coordinateMarkers.forEach { marker ->
+            marker.setNormalizedPosition(marker.normalizedX, marker.normalizedY)
+        }
+    }
     override fun show() {
         super.show()
+        coordinateMarkers.clear()
         window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.BLACK))
             setLayout(
