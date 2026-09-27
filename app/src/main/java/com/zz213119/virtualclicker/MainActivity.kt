@@ -827,6 +827,43 @@ class MainActivity : AppCompatActivity() {
     var selectedPackageName: String? = null
         private set
 
+    private var pressedFullscreenClose = false
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (::fullscreenCloseButton.isInitialized &&
+            fullscreenCloseButton.visibility == View.VISIBLE
+        ) {
+            val loc = IntArray(2)
+            fullscreenCloseButton.getLocationOnScreen(loc)
+            val inside = ev.rawX >= loc[0] &&
+                ev.rawX < loc[0] + fullscreenCloseButton.width &&
+                ev.rawY >= loc[1] &&
+                ev.rawY < loc[1] + fullscreenCloseButton.height
+
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    pressedFullscreenClose = inside
+                    if (inside) return true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val wasPressed = pressedFullscreenClose
+                    pressedFullscreenClose = false
+                    if (wasPressed) {
+                        if (inside) fullscreenCloseButton.performClick()
+                        return true
+                    }
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    pressedFullscreenClose = false
+                }
+            }
+        }
+
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onResume() {
         super.onResume()
         val displayId = currentDisplayId
