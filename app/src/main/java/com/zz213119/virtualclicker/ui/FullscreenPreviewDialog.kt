@@ -249,8 +249,12 @@ class FullscreenPreviewDialog(
         }
     }
     override fun show() {
-        super.show()
+        if (::previewContainer.isInitialized) {
+            coordinateMarkers.forEach { previewContainer.removeView(it) }
+        }
         coordinateMarkers.clear()
+        nextMarkerNumber = 1
+        super.show()
         window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.BLACK))
             setLayout(
