@@ -1,5 +1,6 @@
 package com.zz213119.virtualclicker.ui
 
+import android.app.AlertDialog
 import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
@@ -105,6 +106,10 @@ class ScriptEditorActivity : AppCompatActivity() {
             openCoordinatePicker()
         }
 
+        findViewById<Button>(R.id.switchScript).setOnClickListener {
+            showScriptSwitcher()
+        }
+
         findViewById<Button>(R.id.saveScript).setOnClickListener {
             saveCurrentScript()
         }
@@ -117,17 +122,13 @@ class ScriptEditorActivity : AppCompatActivity() {
             stopScript()
         }
 
-        loadScript()
+        loadLastScript()
     }
 
-    private fun loadScript() {
+    private fun loadLastScript() {
         val script = ScriptRepository.loadLast(this)
-        scriptName.setText(script.name)
-        repeatCount.setText(script.repeatCount.toString())
-        rows.clear()
-        actionContainer.removeAllViews()
-        script.actions.forEach(::addAction)
-        updateStatus("已载入上次保存的脚本：" + script.actions.size + " 个动作")
+        loadScriptIntoEditor(script)
+        updateStatus("已载入上次保存的脚本：" + script.name + " · " + script.actions.size + " 个动作")
     }
 
     private fun addAction(action: ScriptAction) {
@@ -308,7 +309,7 @@ class ScriptEditorActivity : AppCompatActivity() {
                             y = y
                         )
                     )
-                    ScriptRepository.saveLast(this, collectScript())
+                    ScriptRepository.saveOrUpdate(this, collectScript())
 
                     findViewById<TextView>(R.id.scriptCoordinateStatus).text =
                         "已添加动作 " + rows.size + "：点击 X=" + x.toInt() + "  Y=" + y.toInt() +
@@ -339,9 +340,69 @@ class ScriptEditorActivity : AppCompatActivity() {
 
     private fun saveCurrentScript() {
         val script = collectScript()
-        ScriptRepository.saveLast(this, script)
-        updateStatus("已保存：" + script.name + " · " + script.actions.size + " 个动作")
-        Toast.makeText(this, "脚本已保存", Toast.LENGTH_SHORT).show()
+        val name = script.name
+
+        if (ScriptRepository.exists(this, name)) {
+            AlertDialog.Builder(this)
+                .setTitle("覆盖脚本？")
+                .setMessage("脚本“" + name + "”已经存在，是否覆盖？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("覆盖") { _, _ ->
+                    ScriptRepository.saveOrUpdate(this, script)
+                    updateStatus(
+                        "已覆盖：" + script.name + " · " + script.actions.size + " 个动作"
+                    )
+                    Toast.makeText(this, "已覆盖脚本：" + script.name, Toast.LENGTH_SHORT).show()
+                }
+                .show()
+        } else {
+            ScriptRepository.saveOrUpdate(this, script)
+            updateStatus("已保存新脚本：" + script.name + " · " + script.actions.size + " 个动作")
+            Toast.makeText(this, "已保存新脚本：" + script.name, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showScriptSwitcher() {
+        val names = ScriptRepository.listNames(this)
+        if (names.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("切换脚本")
+                .setMessage("还没有已保存的脚本。先保存当前脚本即可添加到列表。")
+                .setPositiveButton("知道了", null)
+                .show()
+            return
+        }
+
+        val currentName = scriptName.text.toString().trim()
+        val checked = names.indexOf(currentName).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle("切换脚本")
+            .setSingleChoiceItems(
+                names.toTypedArray(),
+                checked
+            ) { dialog, which ->
+                val selectedName = names[which]
+                val script = ScriptRepository.load(this, selectedName)
+                if (script != null) {
+                    loadScriptIntoEditor(script)
+                    updateStatus(
+                        "已切换到脚本：" + script.name +
+                            " · " + script.actions.size + " 个动作"
+                    )
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun loadScriptIntoEditor(script: ScriptDefinition) {
+        scriptName.setText(script.name)
+        repeatCount.setText(script.repeatCount.toString())
+        rows.clear()
+        actionContainer.removeAllViews()
+        script.actions.forEach(::addAction)
     }
 
     private fun runCurrentScript() {
