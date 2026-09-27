@@ -2,6 +2,7 @@ package com.zz213119.virtualclicker
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.hardware.display.DisplayManager
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.GestureDetector
@@ -31,6 +32,17 @@ import com.zz213119.virtualclicker.ui.FullscreenPreviewDialog
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        private const val STATE_DISPLAY_ID = "state_display_id"
+        private const val STATE_SELECTED_PACKAGE = "state_selected_package"
+        private const val STATE_SELECTED_LABEL = "state_selected_label"
+        private const val STATE_DISPLAY_WIDTH = "state_display_width"
+        private const val STATE_DISPLAY_HEIGHT = "state_display_height"
+        private const val STATE_DISPLAY_DPI = "state_display_dpi"
+        private const val STATE_DISPLAY_LANDSCAPE = "state_display_landscape"
+        private const val STATE_GAME_MODE = "state_game_mode"
+        private const val STATE_RESOLUTION_POSITION = "state_resolution_position"
+    }
     private lateinit var controller: ShizukuController
     private lateinit var shizukuStatus: TextView
     private lateinit var backendStatus: TextView
@@ -86,6 +98,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        savedInstanceState?.let { state ->
+            currentDisplayId = state.getInt(STATE_DISPLAY_ID, -1)
+            displayWidth = state.getInt(STATE_DISPLAY_WIDTH, displayWidth)
+            displayHeight = state.getInt(STATE_DISPLAY_HEIGHT, displayHeight)
+            displayDpi = state.getInt(STATE_DISPLAY_DPI, displayDpi)
+            displayLandscape = state.getBoolean(STATE_DISPLAY_LANDSCAPE, displayLandscape)
+            gameMode = state.getBoolean(STATE_GAME_MODE, gameMode)
+        }
+
         setContentView(R.layout.activity_main)
 
         shizukuStatus = findViewById(R.id.shizukuStatus)
@@ -111,6 +133,12 @@ class MainActivity : AppCompatActivity() {
         resolutionInfo = findViewById(R.id.resolutionInfo)
         displayModeButton = findViewById(R.id.displayModeButton)
         fullscreenCloseButton = findViewById(R.id.fullscreenCloseButton)
+
+        selectedPackageName = savedInstanceState?.getString(STATE_SELECTED_PACKAGE)
+        val restoredLabel = savedInstanceState?.getString(STATE_SELECTED_LABEL)
+        if (selectedPackageName != null) {
+            appList.text = "已选择：" + (restoredLabel ?: selectedPackageName) + "\n" + selectedPackageName
+        }
         fullscreenCloseButton.visibility = View.GONE
         displayModeButton.setOnClickListener { toggleGameMode() }
         fullscreenCloseButton.setOnClickListener {
@@ -270,8 +298,33 @@ class MainActivity : AppCompatActivity() {
             releaseCurrentDisplay()
         }
 
+        val restoredDisplayId = currentDisplayId
+        val displayStillExists = restoredDisplayId >= 0 &&
+            (getSystemService(DisplayManager::class.java)?.getDisplay(restoredDisplayId) != null)
+
+        if (!displayStillExists && savedInstanceState != null) {
+            currentDisplayId = -1
+        }
+
+        val savedResolutionPosition = savedInstanceState?.getInt(STATE_RESOLUTION_POSITION, -1) ?: -1
+        if (savedResolutionPosition in resolutionPresets.indices) {
+            resolutionSpinner.setSelection(savedResolutionPosition, false)
+            applySelectedResolutionGeometry(resolutionPresets[savedResolutionPosition])
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            updateResolutionInfo()
+        } else {
+            updateResolutionInfo()
+        }
+
+        updateDisplayModeButton()
         refreshStatus()
-        setPreviewRunning(false)
+        setPreviewRunning(currentDisplayId >= 0)
+
+        if (currentDisplayId >= 0) {
+            virtualDisplayStatus.text = "虚拟屏 #" + currentDisplayId + " 正在后台运行 · " +
+                displayWidth + "×" + displayHeight
+        }
     }
 
     private fun setPreviewRunning(running: Boolean) {
@@ -838,6 +891,45 @@ class MainActivity : AppCompatActivity() {
     var selectedPackageName: String? = null
         private set
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        // Physical rotation only relayouts the controller page. It must not
+        // tear down the Shizuku UserService, Virtual Display, or target app.
+        runCatching {
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            updateResolutionInfo()
+        }.onFailure {
+            android.util.Log.w("MainActivity", "configuration relayout failed", it)
+        }
+
+        setPreviewRunning(currentDisplayId >= 0)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt(STATE_DISPLAY_ID, currentDisplayId)
+        outState.putString(STATE_SELECTED_PACKAGE, selectedPackageName)
+        outState.putString(
+            STATE_SELECTED_LABEL,
+            if (::appList.isInitialized) {
+                appList.text?.toString()?.substringBefore("\n")?.removePrefix("已选择：")
+            } else {
+                null
+            }
+        )
+        outState.putInt(STATE_DISPLAY_WIDTH, displayWidth)
+        outState.putInt(STATE_DISPLAY_HEIGHT, displayHeight)
+        outState.putInt(STATE_DISPLAY_DPI, displayDpi)
+        outState.putBoolean(STATE_DISPLAY_LANDSCAPE, displayLandscape)
+        outState.putBoolean(STATE_GAME_MODE, gameMode)
+        outState.putInt(
+            STATE_RESOLUTION_POSITION,
+            if (::resolutionSpinner.isInitialized) resolutionSpinner.selectedItemPosition else 2
+        )
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
         val displayId = currentDisplayId
@@ -852,18 +944,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        // Activity destruction is a real teardown point. Invalidate any
-        // in-flight creation and ask the Shizuku backend to detach the
-        // Surface and release the display before this Activity disappears.
-        displayOperationGeneration++
-        val displayId = currentDisplayId
-        currentDisplayId = -1
-        stopAutoClicker()
-        if (displayId >= 0) {
-            runCatching {
-                VirtualDisplayManager.release(displayId)
-            }.onFailure {
-                android.util.Log.e("MainActivity", "final virtual display release failed", it)
+        val changingConfigurations = isChangingConfigurations
+
+        if (!changingConfigurations) {
+            // A real finish/teardown releases the virtual display. Rotation
+            // does not: the backend and target app must keep running.
+            displayOperationGeneration++
+            val displayId = currentDisplayId
+            currentDisplayId = -1
+            stopAutoClicker()
+
+            if (displayId >= 0) {
+                runCatching {
+                    VirtualDisplayManager.release(displayId)
+                }.onFailure {
+                    android.util.Log.e("MainActivity", "final virtual display release failed", it)
+                }
             }
         }
 
@@ -872,7 +968,6 @@ class MainActivity : AppCompatActivity() {
         controller.unbind()
         super.onDestroy()
     }
-
     private fun refreshStatus() {
         val available = controller.isShizukuAvailable()
         val granted = runCatching { controller.hasPermission() }.getOrDefault(false)
