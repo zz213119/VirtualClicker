@@ -45,7 +45,19 @@ class MainActivity : AppCompatActivity() {
         // Let the target Activity create its window before switching the
         // VirtualDisplay output from the internal sink to the preview Surface.
         private const val SURFACE_ATTACH_DELAY_MS = 800L
+
+        private const val PREFS_NAME = "virtualclicker_preferences"
+        private const val PREF_SELECTED_PACKAGE = "selected_package"
+        private const val PREF_SELECTED_LABEL = "selected_label"
     }
+
+    private val preferences by lazy {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+    }
+
+    private val coordinateMarkers =
+        mutableListOf<com.zz213119.virtualclicker.ui.CoordinateMarkerView>()
+
     private lateinit var controller: ShizukuController
     private lateinit var shizukuStatus: TextView
     private lateinit var backendStatus: TextView
@@ -74,6 +86,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var displayModeButton: Button
     private lateinit var fullscreenCloseButton: TextView
     private var manualControlEnabled = false
+
+    private var nextCoordinateMarkerNumber = 1
     private var manualTouchActive = false
     private var touchDownX = 0f
     private var touchDownY = 0f
@@ -137,8 +151,13 @@ class MainActivity : AppCompatActivity() {
         displayModeButton = findViewById(R.id.displayModeButton)
         fullscreenCloseButton = findViewById(R.id.fullscreenCloseButton)
 
-        selectedPackageName = savedInstanceState?.getString(STATE_SELECTED_PACKAGE)
-        val restoredLabel = savedInstanceState?.getString(STATE_SELECTED_LABEL)
+        selectedPackageName =
+            savedInstanceState?.getString(STATE_SELECTED_PACKAGE)
+                ?: preferences.getString(PREF_SELECTED_PACKAGE, null)
+
+        val restoredLabel =
+            savedInstanceState?.getString(STATE_SELECTED_LABEL)
+                ?: preferences.getString(PREF_SELECTED_LABEL, null)
         if (selectedPackageName != null) {
             appList.text = "已选择：" + (restoredLabel ?: selectedPackageName) + "\n" + selectedPackageName
         }
@@ -336,6 +355,12 @@ class MainActivity : AppCompatActivity() {
             virtualDisplayStatus.text = "虚拟屏 #" + currentDisplayId + " 正在后台运行 · " +
                 displayWidth + "×" + displayHeight
         }
+        previewContainer.post {
+            coordinateMarkers.forEach { marker ->
+                marker.x = marker.x.coerceIn(-marker.width / 2f, previewContainer.width - marker.width / 2f)
+                marker.y = marker.y.coerceIn(-marker.height / 2f, previewContainer.height - marker.height / 2f)
+            }
+        }
     }
 
     private fun setPreviewRunning(running: Boolean) {
@@ -366,14 +391,53 @@ class MainActivity : AppCompatActivity() {
 
         inputX.setText(x.toString())
         inputY.setText(y.toString())
+        addCoordinateMarker(x.toFloat(), y.toFloat())
+
         pickCoordinateStatus.text =
-            "已获取坐标：X=$x  Y=$y · ${displayWidth}×${displayHeight}"
+            "已获取坐标：X=$x  Y=$y · ${displayWidth}×${displayHeight} · 长按球球可移动"
 
         Toast.makeText(
             this,
             "已获取坐标：($x, $y)",
             Toast.LENGTH_SHORT
         ).show()
+    }
+
+    private fun addCoordinateMarker(x: Float, y: Float) {
+        val marker = com.zz213119.virtualclicker.ui.CoordinateMarkerView(
+            this,
+            nextCoordinateMarkerNumber++
+        ) { markerPxX, markerPxY ->
+            val parentWidth = previewContainer.width.coerceAtLeast(1)
+            val parentHeight = previewContainer.height.coerceAtLeast(1)
+            val coordinateX = (markerPxX / parentWidth * displayWidth)
+                .coerceIn(0f, (displayWidth - 1).toFloat())
+            val coordinateY = (markerPxY / parentHeight * displayHeight)
+                .coerceIn(0f, (displayHeight - 1).toFloat())
+
+            inputX.setText(coordinateX.roundToInt().toString())
+            inputY.setText(coordinateY.roundToInt().toString())
+            pickCoordinateStatus.text =
+                "已调整坐标：X=${coordinateX.roundToInt()}  Y=${coordinateY.roundToInt()} · 长按拖动中"
+        }
+
+        coordinateMarkers += marker
+        previewContainer.addView(marker)
+
+        marker.post {
+            val parentWidth = previewContainer.width
+            val parentHeight = previewContainer.height
+            if (parentWidth > 0 && parentHeight > 0) {
+                marker.x = x / displayWidth * parentWidth - marker.width / 2f
+                marker.y = y / displayHeight * parentHeight - marker.height / 2f
+            }
+        }
+    }
+
+    private fun clearCoordinateMarkers() {
+        coordinateMarkers.forEach { previewContainer.removeView(it) }
+        coordinateMarkers.clear()
+        nextCoordinateMarkerNumber = 1
     }
 
     private data class ResolutionPreset(
@@ -914,6 +978,7 @@ class MainActivity : AppCompatActivity() {
         currentDisplayId = -1
         setPreviewRunning(false)
         stopAutoClicker()
+        clearCoordinateMarkers()
 
         lifecycleScope.launch {
             virtualDisplayStatus.text = "正在彻底释放虚拟屏 #$displayId…"
@@ -932,6 +997,14 @@ class MainActivity : AppCompatActivity() {
             val pkg = result.data?.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME)
             selectedPackageName = pkg
             appList.text = if (pkg != null) "已选择：$label\n$pkg" else ""
+
+            if (pkg != null) {
+                preferences.edit()
+                    .putString(PREF_SELECTED_PACKAGE, pkg)
+                    .putString(PREF_SELECTED_LABEL, label ?: pkg)
+                    .apply()
+            }
+
             if (pkg != null && currentDisplayId < 0) {
                 applyDetectedOrientation(pkg)
             }
@@ -956,6 +1029,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         setPreviewRunning(currentDisplayId >= 0)
+        previewContainer.post {
+            coordinateMarkers.forEach { marker ->
+                val parentWidth = previewContainer.width
+                val parentHeight = previewContainer.height
+                if (parentWidth > 0 && parentHeight > 0) {
+                    marker.x = marker.x.coerceIn(-marker.width / 2f, parentWidth - marker.width / 2f)
+                    marker.y = marker.y.coerceIn(-marker.height / 2f, parentHeight - marker.height / 2f)
+                }
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -991,6 +1074,7 @@ class MainActivity : AppCompatActivity() {
             val displayId = currentDisplayId
             currentDisplayId = -1
             stopAutoClicker()
+            clearCoordinateMarkers()
 
             if (displayId >= 0) {
                 runCatching {
