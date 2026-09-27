@@ -129,4 +129,10 @@ object VirtualDisplayManager {
             service?.swipe(displayId, x1, y1, x2, y2, durationMs) ?: false
         }.onFailure { Log.e(TAG, "swipe failed", it) }
             .getOrDefault(false)
+
+    fun injectMotionEvent(event: android.view.MotionEvent, displayId: Int): Boolean =
+        runCatching {
+            service?.injectMotionEvent(event, displayId) ?: false
+        }.onFailure { Log.e(TAG, "injectMotionEvent failed", it) }
+            .getOrDefault(false)
 }
