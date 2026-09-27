@@ -18,7 +18,8 @@ import kotlin.math.abs
 class CoordinateMarkerView(
     context: Context,
     val number: Int,
-    private val onMoved: (Float, Float) -> Unit
+    private val onMoved: (Float, Float) -> Unit,
+    private val onTapped: ((Float, Float) -> Unit)? = null
 ) : View(context) {
 
     var normalizedX: Float = 0f
@@ -146,9 +147,16 @@ class CoordinateMarkerView(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 longPressRunnable?.let(::removeCallbacks)
                 longPressRunnable = null
-                if (dragging) {
-                    dragging = false
+
+                val wasDragging = dragging
+                dragging = false
+
+                if (event.actionMasked == MotionEvent.ACTION_UP && !wasDragging) {
+                    val centerX = (x + width / 2f).coerceIn(0f, parent.width.toFloat())
+                    val centerY = (y + height / 2f).coerceIn(0f, parent.height.toFloat())
+                    onTapped?.invoke(centerX, centerY)
                 }
+
                 performClick()
                 return true
             }
