@@ -485,10 +485,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      */
     override fun injectMotionEvent(event: MotionEvent, displayId: Int): Boolean {
         if (!isDisplayManaged(displayId)) {
-            Log.w(TAG, "injectMotionEvent rejected: displayId=\${displayId} is not managed")
+            Log.w(TAG, "injectMotionEvent rejected: displayId=${displayId} is not managed")
             LogWriter.write(
                 "MOTION EVENT REJECTED",
-                "displayId=\${displayId}\\naction=\${event.actionMasked}\\nreason=display_not_managed"
+                "displayId=${displayId}\\naction=${event.actionMasked}\\nreason=display_not_managed"
             )
             return false
         }
@@ -528,28 +528,28 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
             Log.i(
                 TAG,
-                "injectMotionEvent displayId=\${displayId} " +
-                    "action=\${event.actionMasked} source=0x\${event.source.toString(16)} " +
-                    "x=\${event.x} y=\${event.y} mode=\${mode} accepted=\${accepted}"
+                "injectMotionEvent displayId=${displayId} " +
+                    "action=${event.actionMasked} source=0x${event.source.toString(16)} " +
+                    "x=${event.x} y=${event.y} mode=${mode} accepted=${accepted}"
             )
             LogWriter.write(
                 "MOTION EVENT",
-                "displayId=\${displayId}\\naction=\${event.actionMasked}\\n" +
-                    "source=0x\${event.source.toString(16)}\\n" +
-                    "x=\${event.x}\\ny=\${event.y}\\n" +
-                    "mode=\${mode}\\naccepted=\${accepted}"
+                "displayId=${displayId}\\naction=${event.actionMasked}\\n" +
+                    "source=0x${event.source.toString(16)}\\n" +
+                    "x=${event.x}\\ny=${event.y}\\n" +
+                    "mode=${mode}\\naccepted=${accepted}"
             )
 
             accepted
         }.onFailure {
             Log.e(
                 TAG,
-                "injectMotionEvent failed displayId=\${displayId} action=\${event.actionMasked}",
+                "injectMotionEvent failed displayId=${displayId} action=${event.actionMasked}",
                 it
             )
             LogWriter.write(
                 "MOTION EVENT INJECT FAILED",
-                "displayId=\${displayId}\\naction=\${event.actionMasked}\\n\${it.stackTraceToString()}"
+                "displayId=${displayId}\\naction=${event.actionMasked}\\n${it.stackTraceToString()}"
             )
         }.getOrDefault(false)
     }
