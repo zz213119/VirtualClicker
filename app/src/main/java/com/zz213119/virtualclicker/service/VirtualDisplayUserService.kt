@@ -484,33 +484,79 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * events for responsive swipes.
      */
     override fun injectMotionEvent(event: MotionEvent, displayId: Int): Boolean {
-        if (!isDisplayManaged(displayId)) return false
+        if (!isDisplayManaged(displayId)) {
+            Log.w(TAG, "injectMotionEvent rejected: displayId=\${displayId} is not managed")
+            LogWriter.write(
+                "MOTION EVENT REJECTED",
+                "displayId=\${displayId}\\naction=\${event.actionMasked}\\nreason=display_not_managed"
+            )
+            return false
+        }
 
         return runCatching {
-            MotionEvent::class.java.getMethod(
+            // Normalize the event before it enters InputDispatcher. The touch
+            // originates from our preview Activity, so keep it explicitly as a
+            // touchscreen event and associate it with the virtual display.
+            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+
+            val setDisplayId = android.view.InputEvent::class.java.getMethod(
                 "setDisplayId",
                 Int::class.javaPrimitiveType
-            ).invoke(event, displayId)
+            )
+            setDisplayId.invoke(event, displayId)
 
-            val inputManager = Class.forName("android.hardware.input.InputManager")
-                .getMethod("getInstance")
-                .invoke(null)
+            val inputManagerClass = Class.forName("android.hardware.input.InputManager")
+            val inputManager = createShellContext()
+                .getSystemService(Context.INPUT_SERVICE)
+                ?: throw IllegalStateException("InputManager unavailable")
 
-            val inject = inputManager.javaClass.getMethod(
+            val inject = inputManagerClass.getMethod(
                 "injectInputEvent",
-                InputEvent::class.java,
+                android.view.InputEvent::class.java,
                 Int::class.javaPrimitiveType
             )
 
-            // 0 = INJECT_INPUT_EVENT_MODE_ASYNC.
-            (inject.invoke(inputManager, event, 0) as? Boolean) ?: true
+            // DOWN/UP wait for the dispatcher to accept the event so routing
+            // failures become visible immediately. MOVE stays asynchronous.
+            val mode = if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                INJECT_INPUT_EVENT_MODE_ASYNC
+            } else {
+                INJECT_INPUT_EVENT_MODE_WAIT_FOR_RESULT
+            }
+
+            val accepted = (inject.invoke(inputManager, event, mode) as? Boolean) ?: false
+
+            Log.i(
+                TAG,
+                "injectMotionEvent displayId=\${displayId} " +
+                    "action=\${event.actionMasked} source=0x\${event.source.toString(16)} " +
+                    "x=\${event.x} y=\${event.y} mode=\${mode} accepted=\${accepted}"
+            )
+            LogWriter.write(
+                "MOTION EVENT",
+                "displayId=\${displayId}\\naction=\${event.actionMasked}\\n" +
+                    "source=0x\${event.source.toString(16)}\\n" +
+                    "x=\${event.x}\\ny=\${event.y}\\n" +
+                    "mode=\${mode}\\naccepted=\${accepted}"
+            )
+
+            accepted
         }.onFailure {
-            Log.e(TAG, "injectMotionEvent failed displayId=$displayId action=${event.action}", it)
+            Log.e(
+                TAG,
+                "injectMotionEvent failed displayId=\${displayId} action=\${event.actionMasked}",
+                it
+            )
             LogWriter.write(
                 "MOTION EVENT INJECT FAILED",
-                "displayId=$displayId\naction=${event.action}\n${it.stackTraceToString()}"
+                "displayId=\${displayId}\\naction=\${event.actionMasked}\\n\${it.stackTraceToString()}"
             )
         }.getOrDefault(false)
+    }
+
+    private companion object {
+        const val INJECT_INPUT_EVENT_MODE_ASYNC = 0
+        const val INJECT_INPUT_EVENT_MODE_WAIT_FOR_RESULT = 1
     }
 
     private fun isDisplayManaged(displayId: Int): Boolean {
