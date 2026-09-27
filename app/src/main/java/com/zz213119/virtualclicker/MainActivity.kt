@@ -42,6 +42,9 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_DISPLAY_LANDSCAPE = "state_display_landscape"
         private const val STATE_GAME_MODE = "state_game_mode"
         private const val STATE_RESOLUTION_POSITION = "state_resolution_position"
+        // Let the target Activity create its window before switching the
+        // VirtualDisplay output from the internal sink to the preview Surface.
+        private const val SURFACE_ATTACH_DELAY_MS = 800L
     }
     private lateinit var controller: ShizukuController
     private lateinit var shizukuStatus: TextView
@@ -154,14 +157,22 @@ class MainActivity : AppCompatActivity() {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 previewSurface = holder.surface
 
-                // Reattach the preview surface when the Activity/window recreates
-                // it. The virtual display itself remains alive until explicitly
-                // closed or the Activity is actually destroyed.
+                // Reattach a newly-created UI Surface only once it is stable.
+                // The initial launch path attaches it explicitly after the
+                // target Activity has started, so we avoid a create-time race.
                 val displayId = currentDisplayId
                 if (displayId >= 0 && !isFinishing) {
                     lifecycleScope.launch {
-                        withContext(Dispatchers.IO) {
-                            VirtualDisplayManager.setDisplaySurface(displayId, holder.surface)
+                        kotlinx.coroutines.delay(SURFACE_ATTACH_DELAY_MS)
+                        val surface = previewSurface
+                        if (currentDisplayId == displayId &&
+                            surface === holder.surface &&
+                            surface?.isValid == true &&
+                            !isFinishing
+                        ) {
+                            withContext(Dispatchers.IO) {
+                                VirtualDisplayManager.setDisplaySurface(displayId, surface)
+                            }
                         }
                     }
                 }
@@ -736,15 +747,18 @@ class MainActivity : AppCompatActivity() {
             if (operation != displayOperationGeneration) return@launch
 
             virtualDisplayStatus.text = "创建虚拟屏…"
-            val surface = previewSurface
-            if (surface == null || !surface.isValid) {
+            if (previewSurface?.isValid != true) {
                 virtualDisplayStatus.text = "预览 Surface 尚未就绪，请稍后再试"
                 return@launch
             }
 
+            // First create a real display with an internal ImageReader sink.
+            // Then launch the target Activity, and only after that switch the
+            // output to our preview Surface. This isolates the launch/render
+            // timing from the UI Surface lifecycle.
             val displayId = withContext(Dispatchers.IO) {
-                VirtualDisplayManager.createDisplayWithSurface(
-                    "vc_display_1", displayWidth, displayHeight, displayDpi, surface
+                VirtualDisplayManager.createDisplay(
+                    "vc_display_1", displayWidth, displayHeight, displayDpi
                 )
             }
 
@@ -781,7 +795,44 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
-            if (!ok) {
+            if (ok) {
+                virtualDisplayStatus.text = "应用已启动，等待渲染 Surface…"
+                kotlinx.coroutines.delay(SURFACE_ATTACH_DELAY_MS)
+
+                val surfaceAfterLaunch = previewSurface
+                if (operation != displayOperationGeneration ||
+                    isFinishing ||
+                    currentDisplayId != displayId
+                ) {
+                    withContext(Dispatchers.IO) {
+                        VirtualDisplayManager.release(displayId)
+                    }
+                    return@launch
+                }
+
+                if (surfaceAfterLaunch?.isValid != true) {
+                    currentDisplayId = -1
+                    setPreviewRunning(false)
+                    withContext(Dispatchers.IO) {
+                        VirtualDisplayManager.release(displayId)
+                    }
+                    virtualDisplayStatus.text = "应用已启动，但预览 Surface 无效，虚拟屏已释放"
+                    return@launch
+                }
+
+                val attached = withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.setDisplaySurface(displayId, surfaceAfterLaunch)
+                }
+                if (!attached) {
+                    currentDisplayId = -1
+                    setPreviewRunning(false)
+                    withContext(Dispatchers.IO) {
+                        VirtualDisplayManager.release(displayId)
+                    }
+                    virtualDisplayStatus.text = "预览 Surface 绑定失败，虚拟屏已释放"
+                    return@launch
+                }
+            } else {
                 currentDisplayId = -1
                 setPreviewRunning(false)
                 withContext(Dispatchers.IO) {
@@ -928,19 +979,6 @@ class MainActivity : AppCompatActivity() {
             if (::resolutionSpinner.isInitialized) resolutionSpinner.selectedItemPosition else 2
         )
         super.onSaveInstanceState(outState)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val displayId = currentDisplayId
-        val surface = previewSurface
-        if (displayId >= 0 && surface?.isValid == true) {
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) {
-                    VirtualDisplayManager.setDisplaySurface(displayId, surface)
-                }
-            }
-        }
     }
 
     override fun onDestroy() {
