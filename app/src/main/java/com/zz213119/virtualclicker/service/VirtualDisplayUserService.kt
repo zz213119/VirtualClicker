@@ -237,6 +237,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 val taskId = findTaskForPackageOnDisplay(packageName, displayId)
                 if (taskId != null) {
                     sessions[displayId] = DisplaySession(packageName, taskId)
+                    focusTaskOnDisplay(displayId, taskId)
                     appendLog(
                         "TASK SESSION CREATED",
                         "displayId=$displayId\npackage=$packageName\ntaskId=$taskId"
@@ -507,6 +508,15 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 val y = event.getY(0)
                 val eventTime = android.os.SystemClock.uptimeMillis()
 
+                // Opening the fullscreen preview moves the phone's foreground
+                // Activity to the primary display. Re-focus the target task on
+                // the virtual display when a new gesture starts.
+                if (action == MotionEvent.ACTION_DOWN) {
+                    sessions[displayId]?.taskId?.let { taskId ->
+                        focusTaskOnDisplay(displayId, taskId)
+                    }
+                }
+
                 val downTime = when (action) {
                     MotionEvent.ACTION_DOWN -> {
                         eventTime.also { gestureDownTimes[displayId] = it }
@@ -613,6 +623,52 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
 
 
+    private fun focusTaskOnDisplay(displayId: Int, taskId: Int): Boolean {
+        if (taskId < 0 || !isDisplayManaged(displayId)) return false
+        return runCatching {
+            val atmsClass = Class.forName("android.app.ActivityTaskManager")
+            val getService = atmsClass.getDeclaredMethod("getService")
+            val atms = getService.invoke(null)
+                ?: throw IllegalStateException("ActivityTaskManager unavailable")
+
+            var focused = false
+
+            runCatching {
+                val setFocusedTask = atms.javaClass.getMethod(
+                    "setFocusedTask",
+                    Int::class.javaPrimitiveType
+                )
+                setFocusedTask.invoke(atms, taskId)
+                focused = true
+            }.onFailure {
+                Log.w(TAG, "setFocusedTask failed taskId=" + taskId + " displayId=" + displayId, it)
+            }
+
+            runCatching {
+                val focusTopTask = atms.javaClass.getMethod(
+                    "focusTopTask",
+                    Int::class.javaPrimitiveType
+                )
+                focusTopTask.invoke(atms, displayId)
+                focused = true
+            }.onFailure {
+                Log.w(TAG, "focusTopTask failed displayId=" + displayId, it)
+            }
+
+            Log.i(TAG, "focusTaskOnDisplay displayId=" + displayId + " taskId=" + taskId + " focused=" + focused)
+            LogWriter.write(
+                "FOCUS TASK",
+                "displayId=" + displayId + "\ntaskId=" + taskId + "\nfocused=" + focused
+            )
+            focused
+        }.onFailure {
+            Log.e(TAG, "focusTaskOnDisplay failed displayId=" + displayId + " taskId=" + taskId, it)
+            LogWriter.write(
+                "FOCUS TASK FAILED",
+                "displayId=" + displayId + "\ntaskId=" + taskId + "\n" + it.stackTraceToString()
+            )
+        }.getOrDefault(false)
+    }
     private fun isDisplayManaged(displayId: Int): Boolean {
         return displays.containsKey(displayId)
     }
