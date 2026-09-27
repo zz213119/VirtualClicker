@@ -567,7 +567,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     // following MOVE/UP events have a guaranteed gesture target.
                     // MOVE/UP remain asynchronous for low latency.
                     val mode = if (action == MotionEvent.ACTION_DOWN) {
-                        INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
+                        2 // INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
                     } else {
                         INJECT_INPUT_EVENT_MODE_ASYNC
                     }
