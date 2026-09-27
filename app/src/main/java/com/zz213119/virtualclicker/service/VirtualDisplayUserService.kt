@@ -483,76 +483,134 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * spawning the shell input process for every gesture and preserves MOVE
      * events for responsive swipes.
      */
+    // State needed to synthesize a clean single-finger touchscreen stream.
+    // We deliberately do not inject the MotionEvent object received over Binder:
+    // that object carries the physical screen's device metadata. Rebuilding it
+    // here matches the proven shell/UserService approach used by MAA-Meow.
+    private val gestureLock = Any()
+    private val gestureDownTimes = ConcurrentHashMap<Int, Long>()
+
     override fun injectMotionEvent(event: MotionEvent, displayId: Int): Boolean {
         if (!isDisplayManaged(displayId)) {
-            Log.w(TAG, "injectMotionEvent rejected: displayId=${displayId} is not managed")
+            Log.w(TAG, "injectMotionEvent rejected: displayId=\${displayId} is not managed")
             LogWriter.write(
                 "MOTION EVENT REJECTED",
-                "displayId=${displayId}\\naction=${event.actionMasked}\\nreason=display_not_managed"
+                "displayId=\${displayId}\\naction=\${event.actionMasked}\\nreason=display_not_managed"
             )
             return false
         }
 
-        return runCatching {
-            // Normalize the event before it enters InputDispatcher. The touch
-            // originates from our preview Activity, so keep it explicitly as a
-            // touchscreen event and associate it with the virtual display.
-            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        return synchronized(gestureLock) {
+            runCatching {
+                val action = event.actionMasked
+                val x = event.getX(0)
+                val y = event.getY(0)
+                val eventTime = android.os.SystemClock.uptimeMillis()
 
-            val setDisplayId = android.view.InputEvent::class.java.getMethod(
-                "setDisplayId",
-                Int::class.javaPrimitiveType
-            )
-            setDisplayId.invoke(event, displayId)
+                val downTime = when (action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        eventTime.also { gestureDownTimes[displayId] = it }
+                    }
+                    else -> gestureDownTimes[displayId] ?: eventTime
+                }
 
-            val inputManagerClass = Class.forName("android.hardware.input.InputManager")
-            val inputManager = createShellContext()
-                .getSystemService(Context.INPUT_SERVICE)
-                ?: throw IllegalStateException("InputManager unavailable")
+                val properties = MotionEvent.PointerProperties().apply {
+                    id = 0
+                    toolType = MotionEvent.TOOL_TYPE_FINGER
+                }
+                val coords = MotionEvent.PointerCoords().apply {
+                    this.x = x
+                    this.y = y
+                    pressure = if (
+                        action == MotionEvent.ACTION_UP ||
+                        action == MotionEvent.ACTION_CANCEL
+                    ) 0f else 1f
+                    size = 1f
+                }
 
-            val inject = inputManagerClass.getMethod(
-                "injectInputEvent",
-                android.view.InputEvent::class.java,
-                Int::class.javaPrimitiveType
-            )
+                val synthetic = MotionEvent.obtain(
+                    downTime,
+                    eventTime,
+                    action,
+                    1,
+                    arrayOf(properties),
+                    arrayOf(coords),
+                    0,
+                    0,
+                    1f,
+                    1f,
+                    0,
+                    0,
+                    android.view.InputDevice.SOURCE_TOUCHSCREEN,
+                    0
+                )
 
-            // DOWN/UP wait for the dispatcher to accept the event so routing
-            // failures become visible immediately. MOVE stays asynchronous.
-            val mode = if (event.actionMasked == MotionEvent.ACTION_MOVE) {
-                INJECT_INPUT_EVENT_MODE_ASYNC
-            } else {
-                INJECT_INPUT_EVENT_MODE_WAIT_FOR_RESULT
-            }
+                try {
+                    val setDisplayId = android.view.InputEvent::class.java.getMethod(
+                        "setDisplayId",
+                        Int::class.javaPrimitiveType
+                    )
+                    setDisplayId.invoke(synthetic, displayId)
 
-            val accepted = (inject.invoke(inputManager, event, mode) as? Boolean) ?: false
+                    val inputManagerClass = Class.forName("android.hardware.input.InputManager")
+                    val inputManager = createShellContext()
+                        .getSystemService(Context.INPUT_SERVICE)
+                        ?: throw IllegalStateException("InputManager unavailable")
 
-            Log.i(
-                TAG,
-                "injectMotionEvent displayId=${displayId} " +
-                    "action=${event.actionMasked} source=0x${event.source.toString(16)} " +
-                    "x=${event.x} y=${event.y} mode=${mode} accepted=${accepted}"
-            )
-            LogWriter.write(
-                "MOTION EVENT",
-                "displayId=${displayId}\\naction=${event.actionMasked}\\n" +
-                    "source=0x${event.source.toString(16)}\\n" +
-                    "x=${event.x}\\ny=${event.y}\\n" +
-                    "mode=${mode}\\naccepted=${accepted}"
-            )
+                    val inject = inputManagerClass.getMethod(
+                        "injectInputEvent",
+                        android.view.InputEvent::class.java,
+                        Int::class.javaPrimitiveType
+                    )
 
-            accepted
-        }.onFailure {
-            Log.e(
-                TAG,
-                "injectMotionEvent failed displayId=${displayId} action=${event.actionMasked}",
-                it
-            )
-            LogWriter.write(
-                "MOTION EVENT INJECT FAILED",
-                "displayId=${displayId}\\naction=${event.actionMasked}\\n${it.stackTraceToString()}"
-            )
-        }.getOrDefault(false)
+                    // The first DOWN is synchronized with InputDispatcher so the
+                    // following MOVE/UP events have a guaranteed gesture target.
+                    // MOVE/UP remain asynchronous for low latency.
+                    val mode = if (action == MotionEvent.ACTION_DOWN) {
+                        INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
+                    } else {
+                        INJECT_INPUT_EVENT_MODE_ASYNC
+                    }
+
+                    val accepted =
+                        (inject.invoke(inputManager, synthetic, mode) as? Boolean) ?: false
+
+                    Log.i(
+                        TAG,
+                        "injectMotionEvent displayId=\${displayId} " +
+                            "action=\${action} x=\${x} y=\${y} " +
+                            "mode=\${mode} accepted=\${accepted}"
+                    )
+                    LogWriter.write(
+                        "MOTION EVENT",
+                        "displayId=\${displayId}\\naction=\${action}\\n" +
+                            "x=\${x}\\ny=\${y}\\nmode=\${mode}\\naccepted=\${accepted}"
+                    )
+
+                    if (accepted &&
+                        (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)
+                    ) {
+                        gestureDownTimes.remove(displayId)
+                    }
+
+                    accepted
+                } finally {
+                    synthetic.recycle()
+                }
+            }.onFailure {
+                Log.e(
+                    TAG,
+                    "injectMotionEvent failed displayId=\${displayId} action=\${event.actionMasked}",
+                    it
+                )
+                LogWriter.write(
+                    "MOTION EVENT INJECT FAILED",
+                    "displayId=\${displayId}\\naction=\${event.actionMasked}\\n\${it.stackTraceToString()}"
+                )
+            }.getOrDefault(false)
+        }
     }
+
 
 
     private fun isDisplayManaged(displayId: Int): Boolean {
