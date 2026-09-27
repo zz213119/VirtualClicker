@@ -38,6 +38,11 @@
             android:name=".ui.ScriptEditorActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.FullscreenPreviewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout" />
+
         <service
             android:name=".shizuku.BackendUserService"
             android:exported="false" />
