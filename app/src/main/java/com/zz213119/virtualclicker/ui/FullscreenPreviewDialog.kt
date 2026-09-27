@@ -1,6 +1,7 @@
 package com.zz213119.virtualclicker.ui
 
 import android.app.Dialog
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
@@ -46,6 +47,17 @@ class FullscreenPreviewDialog(
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        // The preview window itself requests landscape when the Virtual Display
+        // is landscape. This rotates only this fullscreen window; MainActivity
+        // remains in its original portrait orientation after the window closes.
+        window?.attributes = window?.attributes?.apply {
+            screenOrientation = if (displayWidth >= displayHeight) {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
 
         val root = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
