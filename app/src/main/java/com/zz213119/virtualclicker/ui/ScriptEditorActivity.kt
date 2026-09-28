@@ -149,6 +149,22 @@ class ScriptEditorActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
+        val addBefore = Button(this).apply {
+            text = "前面添加"
+            setOnClickListener {
+                val row = root.tag as? RowViews ?: return@setOnClickListener
+                addActionBefore(
+                    row,
+                    ScriptAction(
+                        type = ScriptActionType.CLICK,
+                        x = 0f,
+                        y = 0f,
+                        durationMs = 30L
+                    )
+                )
+            }
+        }
+
         val delete = Button(this).apply {
             text = "删除"
             setOnClickListener {
@@ -160,6 +176,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         }
 
         header.addView(title)
+        header.addView(addBefore)
         header.addView(delete)
         root.addView(header)
 
@@ -215,6 +232,22 @@ class ScriptEditorActivity : AppCompatActivity() {
         )
 
         updateFieldsVisibility(row)
+    }
+
+    private fun addActionBefore(target: RowViews, action: ScriptAction) {
+        val targetIndex = rows.indexOf(target)
+        if (targetIndex < 0) return
+
+        val originalRows = rows.toList()
+        addAction(action)
+
+        val newRow = rows.removeAt(rows.lastIndex)
+        val targetViewIndex = actionContainer.indexOfChild(target.root)
+        actionContainer.removeView(newRow.root)
+        actionContainer.addView(newRow.root, targetViewIndex)
+
+        rows.add(targetIndex, newRow)
+        renumberRows()
     }
 
     private fun updateFieldsVisibility(row: RowViews) {
