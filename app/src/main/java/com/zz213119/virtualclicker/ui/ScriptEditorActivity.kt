@@ -36,7 +36,8 @@ class ScriptEditorActivity : AppCompatActivity() {
         val y: EditText,
         val x2: EditText,
         val y2: EditText,
-        val duration: EditText
+        val duration: EditText,
+        val repeatCount: EditText
     )
 
     private lateinit var scriptName: EditText
@@ -195,14 +196,16 @@ class ScriptEditorActivity : AppCompatActivity() {
         val x2 = numberField("终点 X", action.x2)
         val y2 = numberField("终点 Y", action.y2)
         val duration = numberField(durationHint(action.type), action.durationMs)
+        val repeatCount = integerField("动作重复次数（0=无限）", action.repeatCount)
 
         root.addView(x)
         root.addView(y)
         root.addView(x2)
         root.addView(y2)
         root.addView(duration)
+        root.addView(repeatCount)
 
-        val row = RowViews(root, spinner, x, y, x2, y2, duration)
+        val row = RowViews(root, spinner, x, y, x2, y2, duration, repeatCount)
         root.tag = row
         rows.add(row)
 
@@ -294,7 +297,8 @@ class ScriptEditorActivity : AppCompatActivity() {
                 y = row.y.number(),
                 x2 = row.x2.number(),
                 y2 = row.y2.number(),
-                durationMs = row.duration.longNumber()
+                durationMs = row.duration.longNumber(),
+                repeatCount = row.repeatCount.intNumber()
             )
         }
 
@@ -526,6 +530,20 @@ class ScriptEditorActivity : AppCompatActivity() {
 
     private fun EditText.longNumber(): Long =
         text.toString().trim().toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+
+    private fun EditText.intNumber(): Int =
+        text.toString().trim().toIntOrNull()?.coerceAtLeast(0) ?: 1
+
+    private fun integerField(hint: String, value: Int): EditText =
+        EditText(this).apply {
+            this.hint = hint
+            setText(value.coerceAtLeast(0).toString())
+            inputType = InputType.TYPE_CLASS_NUMBER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
 
     private fun renumberRows() {
         rows.forEachIndexed { index, row ->

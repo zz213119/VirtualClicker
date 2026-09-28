@@ -25,6 +25,9 @@ import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.service.AutoClickService
+import com.zz213119.virtualclicker.service.ScriptRunBus
+import com.zz213119.virtualclicker.service.ScriptRunState
+import com.zz213119.virtualclicker.ui.ScriptTrajectoryView
 import com.zz213119.virtualclicker.shizuku.ShizukuController
 import com.zz213119.virtualclicker.ui.AppPickerActivity
 import com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
@@ -85,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resolutionInfo: TextView
     private lateinit var displayModeButton: Button
     private lateinit var fullscreenCloseButton: TextView
+    private lateinit var scriptTrajectoryView: ScriptTrajectoryView
     private var manualControlEnabled = false
 
     private var nextCoordinateMarkerNumber = 1
@@ -111,6 +115,30 @@ class MainActivity : AppCompatActivity() {
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
         refreshStatus()
+    }
+
+    private val scriptRunListener: (ScriptRunState) -> Unit = { state ->
+        runOnUiThread {
+            if (!::scriptTrajectoryView.isInitialized) return@runOnUiThread
+            scriptTrajectoryView.setDisplaySize(displayWidth, displayHeight)
+            scriptTrajectoryView.updateState(state)
+            scriptTrajectoryView.visibility =
+                if (state.running && state.displayId == currentDisplayId) {
+                    View.VISIBLE
+                } else {
+                    View.GONE
+                }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ScriptRunBus.register(scriptRunListener)
+    }
+
+    override fun onStop() {
+        ScriptRunBus.unregister(scriptRunListener)
+        super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -143,6 +171,9 @@ class MainActivity : AppCompatActivity() {
         pickCoordinateStatus = findViewById(R.id.pickCoordinateStatus)
         previewSurfaceView = findViewById(R.id.virtualDisplaySurface)
         previewPlaceholder = findViewById(R.id.previewPlaceholder)
+        scriptTrajectoryView = findViewById(R.id.scriptTrajectoryView)
+        scriptTrajectoryView.setDisplaySize(displayWidth, displayHeight)
+        scriptTrajectoryView.visibility = View.GONE
         statusDot = findViewById(R.id.statusDot)
         statusBadgeText = findViewById(R.id.statusBadgeText)
         manualControlHint = findViewById(R.id.manualControlHint)
@@ -171,6 +202,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "已结束手动控制，虚拟屏仍保持运行", Toast.LENGTH_SHORT).show()
         }
         previewContainer.setAspectRatio(displayWidth, displayHeight)
+        scriptTrajectoryView.setDisplaySize(displayWidth, displayHeight)
         previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
@@ -549,6 +581,9 @@ class MainActivity : AppCompatActivity() {
             displayHeight = if (displayLandscape) preset.shortEdge else preset.longEdge
         }
         displayDpi = preset.dpi
+        if (::scriptTrajectoryView.isInitialized) {
+            scriptTrajectoryView.setDisplaySize(displayWidth, displayHeight)
+        }
     }
 
     private fun applyResolution(preset: ResolutionPreset) {

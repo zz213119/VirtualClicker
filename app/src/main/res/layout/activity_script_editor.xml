@@ -113,7 +113,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="当前 MVP 支持：点击、长按、滑动、等待，以及整段脚本循环。"
+            android:text="当前 MVP 支持：点击、长按、滑动、等待、单动作循环，以及整段脚本循环。"
             android:textSize="13sp" />
 
         <Button

@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.zz213119.virtualclicker.MainActivity
@@ -50,6 +51,7 @@ class ScriptRunnerService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var scriptJob: Job? = null
+    private var runnerGeneration = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -68,14 +70,15 @@ class ScriptRunnerService : Service() {
                     NOTIFICATION_ID,
                     buildNotification(displayId, script?.name ?: "未知脚本")
                 )
-                startRunner(displayId, script)
+                startRunner(displayId, script, startId)
             }
         }
         return START_NOT_STICKY
     }
 
-    private fun startRunner(displayId: Int, script: ScriptDefinition?) {
+    private fun startRunner(displayId: Int, script: ScriptDefinition?, startId: Int) {
         scriptJob?.cancel()
+        val generation = ++runnerGeneration
 
         if (displayId < 0 || script == null || script.actions.isEmpty()) {
             Log.w(TAG, "script rejected")
@@ -103,19 +106,43 @@ class ScriptRunnerService : Service() {
                 while (isActive && (script.repeatCount == 0 || rounds < script.repeatCount)) {
                     for ((index, action) in script.actions.withIndex()) {
                         if (!isActive) break
-                        val ok = executeAction(displayId, action)
-                        Log.i(
-                            TAG,
-                            "action=" + (index + 1) + "/" + script.actions.size +
-                                ";type=" + action.type + ";ok=" + ok
-                        )
-                        if (!ok) {
-                            LogWriter.write(
-                                "SCRIPT ACTION FAILED",
-                                "name=" + script.name + ";round=" + (rounds + 1) +
-                                    ";action=" + (index + 1) + ";type=" + action.type
+
+                        var actionRuns = 0
+                        while (isActive && (action.repeatCount == 0 || actionRuns < action.repeatCount)) {
+                            actionRuns++
+                            ScriptRunBus.publish(
+                                ScriptRunState(
+                                    running = true,
+                                    scriptName = script.name,
+                                    displayId = displayId,
+                                    actions = script.actions,
+                                    round = rounds + 1,
+                                    totalRounds = script.repeatCount,
+                                    actionIndex = index,
+                                    actionRepeatIndex = actionRuns,
+                                    actionRepeatCount = action.repeatCount,
+                                    actionDurationMs = action.durationMs,
+                                    actionStartedAtUptime = SystemClock.uptimeMillis()
+                                )
                             )
-                            return@launch
+
+                            val ok = executeAction(displayId, action)
+                            Log.i(
+                                TAG,
+                                "action=" + (index + 1) + "/" + script.actions.size +
+                                    ";repeat=" + actionRuns +
+                                    "/" + if (action.repeatCount == 0) "∞" else action.repeatCount +
+                                    ";type=" + action.type + ";ok=" + ok
+                            )
+                            if (!ok) {
+                                LogWriter.write(
+                                    "SCRIPT ACTION FAILED",
+                                    "name=" + script.name + ";round=" + (rounds + 1) +
+                                        ";action=" + (index + 1) + ";repeat=" + actionRuns +
+                                        ";type=" + action.type
+                                )
+                                return@launch
+                            }
                         }
                     }
                     rounds++
@@ -131,10 +158,23 @@ class ScriptRunnerService : Service() {
                     "name=" + script.name + ";rounds=" + rounds +
                         ";repeatCount=" + script.repeatCount
                 )
-                isRunning = false
-                scriptJob = null
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                if (generation == runnerGeneration) {
+                    isRunning = false
+                    ScriptRunBus.publish(
+                        ScriptRunState(
+                            running = false,
+                            scriptName = script.name,
+                            displayId = displayId,
+                            actions = script.actions,
+                            round = rounds,
+                            totalRounds = script.repeatCount,
+                            actionIndex = -1
+                        )
+                    )
+                    scriptJob = null
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelfResult(startId)
+                }
             }
         }
     }
@@ -181,6 +221,8 @@ class ScriptRunnerService : Service() {
         scriptJob?.cancel()
         scriptJob = null
         isRunning = false
+        runnerGeneration++
+        ScriptRunBus.publish(ScriptRunState(running = false))
         LogWriter.write("SCRIPT STOP", "manual_stop=true")
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
@@ -224,6 +266,8 @@ class ScriptRunnerService : Service() {
         scriptJob?.cancel()
         scriptJob = null
         isRunning = false
+        runnerGeneration++
+        ScriptRunBus.publish(ScriptRunState(running = false))
         serviceScope.cancel()
         super.onDestroy()
     }
