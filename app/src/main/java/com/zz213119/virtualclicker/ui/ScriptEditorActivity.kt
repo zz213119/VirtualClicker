@@ -238,7 +238,6 @@ class ScriptEditorActivity : AppCompatActivity() {
         val targetIndex = rows.indexOf(target)
         if (targetIndex < 0) return
 
-        val originalRows = rows.toList()
         addAction(action)
 
         val newRow = rows.removeAt(rows.lastIndex)
