@@ -131,7 +131,7 @@ class ScriptRunnerService : Service() {
                                 TAG,
                                 "action=" + (index + 1) + "/" + script.actions.size +
                                     ";repeat=" + actionRuns +
-                                    "/" + if (action.repeatCount == 0) "∞" else action.repeatCount +
+                                    "/" + if (action.repeatCount == 0) "∞" else action.repeatCount.toString() +
                                     ";type=" + action.type + ";ok=" + ok
                             )
                             if (!ok) {
