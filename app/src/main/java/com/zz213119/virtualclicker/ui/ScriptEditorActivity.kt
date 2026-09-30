@@ -37,7 +37,8 @@ class ScriptEditorActivity : AppCompatActivity() {
         val x2: EditText,
         val y2: EditText,
         val duration: EditText,
-        val repeatCount: EditText
+        val repeatCount: EditText,
+        val repeatDelay: EditText
     )
 
     private lateinit var scriptName: EditText
@@ -197,6 +198,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         val y2 = numberField("终点 Y", action.y2)
         val duration = numberField(durationHint(action.type), action.durationMs)
         val repeatCount = integerField("动作重复次数（0=无限）", action.repeatCount)
+        val repeatDelay = longIntegerField("重复等待时间(ms，1000=1秒)", action.repeatDelayMs)
 
         root.addView(x)
         root.addView(y)
@@ -204,8 +206,9 @@ class ScriptEditorActivity : AppCompatActivity() {
         root.addView(y2)
         root.addView(duration)
         root.addView(repeatCount)
+        root.addView(repeatDelay)
 
-        val row = RowViews(root, spinner, x, y, x2, y2, duration, repeatCount)
+        val row = RowViews(root, spinner, x, y, x2, y2, duration, repeatCount, repeatDelay)
         root.tag = row
         rows.add(row)
 
@@ -298,7 +301,8 @@ class ScriptEditorActivity : AppCompatActivity() {
                 x2 = row.x2.number(),
                 y2 = row.y2.number(),
                 durationMs = row.duration.longNumber(),
-                repeatCount = row.repeatCount.intNumber()
+                repeatCount = row.repeatCount.intNumber(),
+                repeatDelayMs = row.repeatDelay.longNumber()
             )
         }
 
@@ -538,6 +542,17 @@ class ScriptEditorActivity : AppCompatActivity() {
         EditText(this).apply {
             this.hint = hint
             setText(value.coerceAtLeast(0).toString())
+            inputType = InputType.TYPE_CLASS_NUMBER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+    private fun longIntegerField(hint: String, value: Long): EditText =
+        EditText(this).apply {
+            this.hint = hint
+            setText(value.coerceAtLeast(0L).toString())
             inputType = InputType.TYPE_CLASS_NUMBER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

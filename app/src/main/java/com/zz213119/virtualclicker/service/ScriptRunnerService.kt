@@ -143,6 +143,13 @@ class ScriptRunnerService : Service() {
                                 )
                                 return@launch
                             }
+
+                            if (isActive &&
+                                (action.repeatCount == 0 || actionRuns < action.repeatCount) &&
+                                action.repeatDelayMs > 0L
+                            ) {
+                                delay(action.repeatDelayMs.coerceAtMost(300000L))
+                            }
                         }
                     }
                     rounds++
