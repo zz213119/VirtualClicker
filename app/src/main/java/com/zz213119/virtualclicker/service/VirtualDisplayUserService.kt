@@ -96,17 +96,28 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }
 
         return runCatching {
-            vd.setSurface(surface)
+            // When MainActivity is sent to the background, its SurfaceView may be
+            // destroyed. Do not leave the VirtualDisplay with no output surface.
+            // Keep the internal ImageReader sink attached so the target Activity
+            // and display session remain alive. The preview Surface is attached
+            // again automatically when the UI comes back.
+            val targetSurface = surface ?: sinks[displayId]?.surface
+            val action = when {
+                surface != null -> "attach_preview"
+                targetSurface != null -> "attach_background_sink"
+                else -> "detach"
+            }
+            vd.setSurface(targetSurface)
             appendLog(
                 "SET SURFACE",
-                "displayId=${displayId}\naction=${if (surface == null) "detach" else "attach"}"
+                "displayId=" + displayId + "\naction=" + action
             )
             true
         }.onFailure {
-            Log.e(TAG, "setVirtualDisplaySurface failed for displayId=${displayId}", it)
+            Log.e(TAG, "setVirtualDisplaySurface failed for displayId=" + displayId, it)
             appendLog(
                 "SET SURFACE FAILED",
-                "displayId=${displayId}\n${it.stackTraceToString()}"
+                "displayId=" + displayId + "\n" + it.stackTraceToString()
             )
         }.getOrDefault(false)
     }
