@@ -329,20 +329,26 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     { latch.countDown() },
                     Handler(captureThread.looper)
                 )
+                // Drop stale buffers so we only ever return a fresh frame.
+                while (true) {
+                    val old = reader.acquireLatestImage() ?: break
+                    old.close()
+                }
                 if (preview != null) {
-                    // Drop stale buffers, then point the display at the sink.
-                    while (true) {
-                        val old = reader.acquireLatestImage() ?: break
-                        old.close()
-                    }
+                    // Foreground: point the display at the sink, restore the preview afterwards.
                     vd.setSurface(reader.surface)
                     switched = true
+                } else {
+                    // Background / screen off: the sink is already attached, but a static
+                    // screen produces no new frames. Re-attaching it forces a redraw.
+                    vd.setSurface(null)
+                    vd.setSurface(reader.surface)
                 }
-                var image = if (switched) null else reader.acquireLatestImage()
-                if (image == null) {
-                    latch.await(1500, TimeUnit.MILLISECONDS)
+                var image: android.media.Image? = null
+                if (latch.await(2000, TimeUnit.MILLISECONDS)) {
                     image = reader.acquireLatestImage()
                 }
+                if (image == null) image = reader.acquireLatestImage()
                 if (image == null) {
                     appendLog("CAPTURE FAILED", "displayId=$displayId\nreason=no_image_timeout switched=$switched")
                     return null

@@ -7,7 +7,11 @@ import android.os.SystemClock
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.service.LogWriter
 import com.zz213119.virtualclicker.task.StaminaOcr.Stamina
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,8 +67,9 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
         private const val START_MIN_COST = 6        // "开始营业"最多消耗 6
         private const val MAX_LOOPS = 60
         private const val PLAY_TIMEOUT_MS = 150_000L
-        private const val NO_PROGRESS_MS = 10_000L  // 点锤子后分数区域这么久没变化就补点一次
-        private const val NO_PROGRESS_DIFF = 0.4f
+        private const val HAMMER_HOLD_MS = 20L      // 每次点击按下到抬起的时间
+        private const val HAMMER_INTERVAL_MS = 60L  // 两次点击之间的间隔（越小越快）
+        private const val POLL_MS = 600L            // 检测分数/结算画面的间隔
 
         private const val SHOT_DIR =
             "/storage/emulated/0/Android/data/com.zz213119.virtualclicker/files/shots"
@@ -242,29 +247,42 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             shot(play, "02-gameplay")
             delay(1500)
 
-            // 5. 点锤子，盯分数
-            var hammerTaps = 1
-            log("tap hammer ok=${tap(HAMMER_X, HAMMER_Y)}")
-            var tHammer = now()
-            var scoreBase = grab()?.let { FrameOps.boxGrid(it, SCORE_RECT[0], SCORE_RECT[1], SCORE_RECT[2], SCORE_RECT[3], 24, 8) }
+            // 5. 连续快速点锤子，同时盯分数
+            val tapJob = CoroutineScope(currentCoroutineContext()).launch {
+                var shellFallback = false
+                var n = 0
+                while (isActive) {
+                    val x = HAMMER_X * w
+                    val y = HAMMER_Y * h
+                    if (!shellFallback) {
+                        val t0 = SystemClock.uptimeMillis()
+                        val down = VirtualDisplayManager.touchEvent(displayId, android.view.MotionEvent.ACTION_DOWN, t0, x, y)
+                        delay(HAMMER_HOLD_MS)
+                        val up = VirtualDisplayManager.touchEvent(displayId, android.view.MotionEvent.ACTION_UP, t0, x, y)
+                        if (!down || !up) {
+                            log("fast tap inject failed (down=$down up=$up), fallback to shell tap")
+                            shellFallback = true
+                        }
+                    } else {
+                        tap(HAMMER_X, HAMMER_Y)
+                    }
+                    n++
+                    if (n == 1 || n % 100 == 0) log("hammer taps=$n shellFallback=$shellFallback")
+                    delay(HAMMER_INTERVAL_MS)
+                }
+            }
             var reached = false
             var resultFrame: Bitmap? = null
             val tPlay = now()
-            while (now() - tPlay < PLAY_TIMEOUT_MS) {
-                delay(1000)
-                val fr = grab() ?: continue
-                if (isResult(fr)) { resultFrame = fr; log("result screen appeared by itself"); break }
-                if (FrameOps.isGoldAt(fr, STAR1_X, STAR1_Y)) { reached = true; shot(fr, "03-reached"); break }
-                if (hammerTaps < 2 && scoreBase != null && now() - tHammer > NO_PROGRESS_MS) {
-                    val cur = FrameOps.boxGrid(fr, SCORE_RECT[0], SCORE_RECT[1], SCORE_RECT[2], SCORE_RECT[3], 24, 8)
-                    val d = FrameOps.diff(scoreBase, cur)
-                    if (d < NO_PROGRESS_DIFF) {
-                        hammerTaps++
-                        log("score not moving (d=$d), tap hammer again ok=${tap(HAMMER_X, HAMMER_Y)}")
-                    }
-                    scoreBase = cur
-                    tHammer = now()
+            try {
+                while (now() - tPlay < PLAY_TIMEOUT_MS) {
+                    delay(POLL_MS)
+                    val fr = grab() ?: continue
+                    if (isResult(fr)) { resultFrame = fr; log("result screen appeared by itself"); break }
+                    if (FrameOps.isGoldAt(fr, STAR1_X, STAR1_Y)) { reached = true; shot(fr, "03-reached"); break }
                 }
+            } finally {
+                tapJob.cancel()
             }
             if (!reached && resultFrame == null) return fail("等了 ${PLAY_TIMEOUT_MS / 1000}s，营业额没达标")
             log("score reached=$reached after ${(now() - tPlay) / 1000}s")

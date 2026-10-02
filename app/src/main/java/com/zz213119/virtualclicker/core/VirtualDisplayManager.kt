@@ -30,7 +30,7 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(2)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(3)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
@@ -139,6 +139,29 @@ object VirtualDisplayManager {
         runCatching { service?.getDisplaySize(displayId) }
             .onFailure { Log.e(TAG, "displaySize failed", it) }
             .getOrNull()
+
+    /** 通过 MotionEvent 直接注入的快速点击（不走 `input` 子进程）；按下→抬起之间 holdMs 由调用方控制。 */
+    fun touchEvent(displayId: Int, action: Int, downTime: Long, x: Float, y: Float): Boolean {
+        val now = android.os.SystemClock.uptimeMillis()
+        val props = arrayOf(android.view.MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
+        })
+        val px = x
+        val py = y
+        val coords = arrayOf(android.view.MotionEvent.PointerCoords().apply {
+            this.x = px; this.y = py; pressure = 1f; size = 1f
+        })
+        val ev = android.view.MotionEvent.obtain(
+            downTime, now, action, 1, props, coords, 0, 0, 1f, 1f, 0, 0,
+            android.view.InputDevice.SOURCE_TOUCHSCREEN, 0
+        )
+        return try {
+            injectMotionEvent(ev, displayId)
+        } finally {
+            ev.recycle()
+        }
+    }
 
     fun injectMotionEvent(event: android.view.MotionEvent, displayId: Int): Boolean =
         runCatching {

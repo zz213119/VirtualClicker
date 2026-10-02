@@ -353,6 +353,17 @@ class MainActivity : AppCompatActivity() {
             ) {
                 notifPermLauncher.launch("android.permission.POST_NOTIFICATIONS")
             }
+            val pm = getSystemService(android.os.PowerManager::class.java)
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                runCatching {
+                    startActivity(
+                        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            .setData(android.net.Uri.parse("package:$packageName"))
+                    )
+                }
+                Toast.makeText(this, "请允许\"不受电池优化限制\"，息屏/后台才能持续运行；允许后再点一次按钮", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
             if (currentDisplayId < 0) {
                 Toast.makeText(this, "请先启动虚拟屏，并让异环停在店内能看到\"店长特供\"的画面", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
