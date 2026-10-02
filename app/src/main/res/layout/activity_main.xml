@@ -230,7 +230,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="异环：店长特供 → 列表滑到顶(1-1)" />
+            android:text="异环：店长特供 1-1 自动刷（体力耗尽时通知）" />
 
         <TextView
             android:id="@+id/virtualDisplayStatus"

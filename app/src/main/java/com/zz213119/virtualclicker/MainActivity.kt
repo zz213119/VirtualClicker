@@ -65,6 +65,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var shizukuStatus: TextView
     private lateinit var backendStatus: TextView
     private lateinit var appList: TextView
+    private val notifPermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     private lateinit var virtualDisplayStatus: TextView
     private lateinit var inputTestStatus: TextView
     private lateinit var inputX: android.widget.EditText
@@ -345,6 +348,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.runYihuanShopTask).setOnClickListener {
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermLauncher.launch("android.permission.POST_NOTIFICATIONS")
+            }
             if (currentDisplayId < 0) {
                 Toast.makeText(this, "请先启动虚拟屏，并让异环停在店内能看到\"店长特供\"的画面", Toast.LENGTH_LONG).show()
                 return@setOnClickListener

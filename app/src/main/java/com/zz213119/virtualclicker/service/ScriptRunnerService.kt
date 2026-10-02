@@ -227,12 +227,16 @@ class ScriptRunnerService : Service() {
                     )
                     return@launch
                 }
-                ok = YihuanShopTask(displayId).run()
+                val outcome = YihuanShopTask(applicationContext, displayId).run()
+                ok = outcome.ok
+                LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
+                AlertNotifier.notify(applicationContext, outcome.title, outcome.text)
             } catch (_: CancellationException) {
                 // Normal stop/restart path.
             } catch (t: Throwable) {
                 Log.e(TAG, "task failed", t)
                 LogWriter.write("TASK EXCEPTION", t.stackTraceToString())
+                AlertNotifier.notify(applicationContext, "异环任务异常", t.message ?: t.javaClass.simpleName)
             } finally {
                 LogWriter.write("TASK END", "task=" + taskId + ";ok=" + ok)
                 if (generation == runnerGeneration) {
