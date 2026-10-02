@@ -344,6 +344,22 @@ class MainActivity : AppCompatActivity() {
             launchSelectedAppOnVirtualDisplay()
         }
 
+        findViewById<Button>(R.id.runYihuanShopTask).setOnClickListener {
+            if (currentDisplayId < 0) {
+                Toast.makeText(this, "请先启动虚拟屏，并让异环停在店内能看到\"店长特供\"的画面", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val taskIntent = Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
+                .setAction(com.zz213119.virtualclicker.service.ScriptRunnerService.ACTION_RUN_TASK)
+                .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, currentDisplayId)
+                .putExtra(
+                    com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_TASK_ID,
+                    com.zz213119.virtualclicker.service.ScriptRunnerService.TASK_YIHUAN_SHOP
+                )
+            androidx.core.content.ContextCompat.startForegroundService(this, taskIntent)
+            virtualDisplayStatus.text = "异环任务已启动：结果见日志与 files/shots 截图"
+        }
+
         findViewById<Button>(R.id.closeVirtualDisplay).setOnClickListener {
             releaseCurrentDisplay()
         }

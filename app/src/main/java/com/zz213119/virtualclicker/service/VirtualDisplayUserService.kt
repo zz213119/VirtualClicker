@@ -5,7 +5,13 @@ import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.Process
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import android.os.Build
 import android.util.Log
 import android.view.InputEvent
@@ -42,6 +48,12 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     private val sessions = ConcurrentHashMap<Int, DisplaySession>()
     private val inputEngine = InputEngine()
+
+    // Last non-null preview Surface attached per display, so captureFrame can
+    // swap to the ImageReader sink and then restore the preview.
+    private val attachedSurfaces = ConcurrentHashMap<Int, android.view.Surface>()
+    private val captureLock = Any()
+    private val captureThread by lazy { HandlerThread("vc_capture").apply { start() } }
 
     private val displayManager: DisplayManager by lazy {
         createShellContext().getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -108,6 +120,8 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 else -> "detach"
             }
             vd.setSurface(targetSurface)
+            if (surface != null) attachedSurfaces[displayId] = surface
+            else attachedSurfaces.remove(displayId)
             appendLog(
                 "SET SURFACE",
                 "displayId=" + displayId + "\naction=" + action
@@ -285,6 +299,91 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }
     }
 
+    override fun getDisplaySize(displayId: Int): IntArray? {
+        val d = displays[displayId]?.display ?: return null
+        return intArrayOf(d.width, d.height)
+    }
+
+    override fun captureFrame(displayId: Int, maxWidth: Int): ByteArray? {
+        val vd = displays[displayId]
+        val reader = sinks[displayId]
+        if (vd == null || reader == null) {
+            appendLog("CAPTURE FAILED", "displayId=$displayId\nreason=no_display_or_sink")
+            return null
+        }
+        return synchronized(captureLock) { captureLocked(displayId, maxWidth, vd, reader) }
+    }
+
+    private fun captureLocked(
+        displayId: Int,
+        maxWidth: Int,
+        vd: VirtualDisplay,
+        reader: ImageReader
+    ): ByteArray? {
+        run {
+            val preview = attachedSurfaces[displayId]?.takeIf { it.isValid }
+            var switched = false
+            try {
+                val latch = CountDownLatch(1)
+                reader.setOnImageAvailableListener(
+                    { latch.countDown() },
+                    Handler(captureThread.looper)
+                )
+                if (preview != null) {
+                    // Drop stale buffers, then point the display at the sink.
+                    while (true) {
+                        val old = reader.acquireLatestImage() ?: break
+                        old.close()
+                    }
+                    vd.setSurface(reader.surface)
+                    switched = true
+                }
+                var image = if (switched) null else reader.acquireLatestImage()
+                if (image == null) {
+                    latch.await(1500, TimeUnit.MILLISECONDS)
+                    image = reader.acquireLatestImage()
+                }
+                if (image == null) {
+                    appendLog("CAPTURE FAILED", "displayId=$displayId\nreason=no_image_timeout switched=$switched")
+                    return null
+                }
+                try {
+                    return imageToJpeg(image, maxWidth)
+                } finally {
+                    image.close()
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "captureFrame failed", t)
+                appendLog("CAPTURE EXCEPTION", t.stackTraceToString())
+                return null
+            } finally {
+                runCatching { reader.setOnImageAvailableListener(null, null) }
+                if (switched && preview != null) {
+                    runCatching { vd.setSurface(preview) }
+                        .onFailure { appendLog("CAPTURE RESTORE FAILED", it.stackTraceToString()) }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun imageToJpeg(image: android.media.Image, maxWidth: Int): ByteArray {
+        val plane = image.planes[0]
+        val w = image.width
+        val h = image.height
+        val pixelStride = plane.pixelStride
+        val rowPadding = plane.rowStride - pixelStride * w
+        val full = Bitmap.createBitmap(w + rowPadding / pixelStride, h, Bitmap.Config.ARGB_8888)
+        full.copyPixelsFromBuffer(plane.buffer)
+        val cropped = if (full.width != w) Bitmap.createBitmap(full, 0, 0, w, h) else full
+        val out = if (maxWidth in 1 until w) {
+            Bitmap.createScaledBitmap(cropped, maxWidth, (h.toLong() * maxWidth / w).toInt(), true)
+        } else cropped
+        val baos = ByteArrayOutputStream()
+        out.compress(Bitmap.CompressFormat.JPEG, 85, baos)
+        return baos.toByteArray()
+    }
+
     override fun releaseVirtualDisplay(displayId: Int) {
         cleanupDisplay(displayId, "explicit_release")
     }
@@ -296,6 +395,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * new input calls from racing with a release.
      */
     private fun cleanupDisplay(displayId: Int, reason: String) {
+        attachedSurfaces.remove(displayId)
         val session = sessions.remove(displayId)
         val vd = displays.remove(displayId)
         val sink = sinks.remove(displayId)

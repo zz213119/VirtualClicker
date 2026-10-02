@@ -52,6 +52,15 @@ interface IVirtualDisplayService {
     // Used by the interactive fullscreen preview so MOVE events are preserved.
     boolean injectMotionEvent(in android.view.MotionEvent event, int displayId);
 
+    // Captures one frame of the display as a JPEG (scaled so width <= maxWidth,
+    // maxWidth <= 0 means original size). Requires the display to have been
+    // created with createVirtualDisplay (internal ImageReader sink). If a preview
+    // Surface is attached it is swapped out for a moment. Returns null on failure.
+    byte[] captureFrame(int displayId, int maxWidth);
+
+    // Returns {width, height} of the virtual display in pixels, or null.
+    int[] getDisplaySize(int displayId);
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }

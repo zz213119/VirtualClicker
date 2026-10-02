@@ -130,6 +130,16 @@ object VirtualDisplayManager {
         }.onFailure { Log.e(TAG, "swipe failed", it) }
             .getOrDefault(false)
 
+    fun captureFrame(displayId: Int, maxWidth: Int): ByteArray? =
+        runCatching { service?.captureFrame(displayId, maxWidth) }
+            .onFailure { Log.e(TAG, "captureFrame failed", it) }
+            .getOrNull()
+
+    fun displaySize(displayId: Int): IntArray? =
+        runCatching { service?.getDisplaySize(displayId) }
+            .onFailure { Log.e(TAG, "displaySize failed", it) }
+            .getOrNull()
+
     fun injectMotionEvent(event: android.view.MotionEvent, displayId: Int): Boolean =
         runCatching {
             service?.injectMotionEvent(event, displayId) ?: false

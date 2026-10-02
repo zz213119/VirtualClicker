@@ -18,6 +18,7 @@ import com.zz213119.virtualclicker.script.ScriptAction
 import com.zz213119.virtualclicker.script.ScriptActionType
 import com.zz213119.virtualclicker.script.ScriptDefinition
 import com.zz213119.virtualclicker.script.ScriptJson
+import com.zz213119.virtualclicker.task.YihuanShopTask
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,9 @@ class ScriptRunnerService : Service() {
     companion object {
         const val ACTION_RUN = "com.zz213119.virtualclicker.action.RUN_SCRIPT"
         const val ACTION_STOP = "com.zz213119.virtualclicker.action.STOP_SCRIPT"
+        const val ACTION_RUN_TASK = "com.zz213119.virtualclicker.action.RUN_TASK"
+        const val EXTRA_TASK_ID = "extra_task_id"
+        const val TASK_YIHUAN_SHOP = "yihuan_shop_special"
         const val EXTRA_DISPLAY_ID = "extra_script_display_id"
         const val EXTRA_SCRIPT_JSON = "extra_script_json"
         private const val CHANNEL_ID = "virtual_clicker_script"
@@ -60,6 +64,13 @@ class ScriptRunnerService : Service() {
             ACTION_STOP -> {
                 stopRunner()
                 stopSelf()
+            }
+
+            ACTION_RUN_TASK -> {
+                val displayId = intent.getIntExtra(EXTRA_DISPLAY_ID, -1)
+                val taskId = intent.getStringExtra(EXTRA_TASK_ID).orEmpty()
+                startForeground(NOTIFICATION_ID, buildNotification(displayId, taskId))
+                startTask(displayId, taskId, startId)
             }
 
             ACTION_RUN -> {
@@ -178,6 +189,45 @@ class ScriptRunnerService : Service() {
                             actionIndex = -1
                         )
                     )
+                    scriptJob = null
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelfResult(startId)
+                }
+            }
+        }
+    }
+
+    private fun startTask(displayId: Int, taskId: String, startId: Int) {
+        scriptJob?.cancel()
+        val generation = ++runnerGeneration
+
+        if (displayId < 0 || taskId != TASK_YIHUAN_SHOP) {
+            Log.w(TAG, "task rejected: displayId=" + displayId + " taskId=" + taskId)
+            isRunning = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        isRunning = true
+        LogWriter.write("TASK START", "task=" + taskId + ";displayId=" + displayId)
+        scriptJob = serviceScope.launch {
+            var ok = false
+            try {
+                if (!VirtualDisplayManager.ensureBound()) {
+                    LogWriter.write("TASK FAILED", "Shizuku UserService bind failed")
+                    return@launch
+                }
+                ok = YihuanShopTask(displayId).run()
+            } catch (_: CancellationException) {
+                // Normal stop/restart path.
+            } catch (t: Throwable) {
+                Log.e(TAG, "task failed", t)
+                LogWriter.write("TASK EXCEPTION", t.stackTraceToString())
+            } finally {
+                LogWriter.write("TASK END", "task=" + taskId + ";ok=" + ok)
+                if (generation == runnerGeneration) {
+                    isRunning = false
                     scriptJob = null
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelfResult(startId)

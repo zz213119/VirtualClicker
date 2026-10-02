@@ -225,6 +225,13 @@
                 android:text="关闭虚拟屏" />
         </LinearLayout>
 
+        <Button
+            android:id="@+id/runYihuanShopTask"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="异环：店长特供 → 列表滑到顶(1-1)" />
+
         <TextView
             android:id="@+id/virtualDisplayStatus"
             android:layout_width="match_parent"
