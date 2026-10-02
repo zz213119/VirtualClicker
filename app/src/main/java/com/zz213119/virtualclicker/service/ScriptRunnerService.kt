@@ -218,6 +218,15 @@ class ScriptRunnerService : Service() {
                     LogWriter.write("TASK FAILED", "Shizuku UserService bind failed")
                     return@launch
                 }
+                val size = VirtualDisplayManager.displaySize(displayId)
+                if (size == null) {
+                    LogWriter.write(
+                        "TASK FAILED",
+                        "displaySize=null：后端守护进程可能是旧版本（缺少 captureFrame），" +
+                            "请强制停止本应用并在 Shizuku 中重新授权后再试"
+                    )
+                    return@launch
+                }
                 ok = YihuanShopTask(displayId).run()
             } catch (_: CancellationException) {
                 // Normal stop/restart path.

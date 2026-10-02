@@ -349,6 +349,9 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请先启动虚拟屏，并让异环停在店内能看到\"店长特供\"的画面", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
+            com.zz213119.virtualclicker.service.LogWriter.write(
+                "YIHUAN BUTTON", "clicked displayId=" + currentDisplayId + " build=" + BuildConfig.VERSION_NAME
+            )
             val taskIntent = Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
                 .setAction(com.zz213119.virtualclicker.service.ScriptRunnerService.ACTION_RUN_TASK)
                 .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, currentDisplayId)
