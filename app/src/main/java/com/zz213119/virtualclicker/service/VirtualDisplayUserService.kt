@@ -52,6 +52,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     // Last non-null preview Surface attached per display, so captureFrame can
     // swap to the ImageReader sink and then restore the preview.
     private val attachedSurfaces = ConcurrentHashMap<Int, android.view.Surface>()
+    private val launchedPackages = ConcurrentHashMap<Int, String>()
     private val captureLock = Any()
     private val captureThread by lazy { HandlerThread("vc_capture").apply { start() } }
 
@@ -363,6 +364,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // `am start` can exit 0 even on some failures (e.g. permission
             // denied warnings); treat an explicit Error: line as failure too.
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
+            if (ok) launchedPackages[displayId] = packageName
             if (ok) {
                 wakeDisplay(displayId)
                 startLaunchWatch(packageName, activityName, displayId, allowRetry)
@@ -509,6 +511,16 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      */
     private fun cleanupDisplay(displayId: Int, reason: String) {
         attachedSurfaces.remove(displayId)
+        // 释放前先强杀这块屏上启动的应用：否则销毁虚拟屏时它的任务会被系统挪回主屏残留，
+        // 反复开关后残留任务/进程越积越多。
+        launchedPackages.remove(displayId)?.let { pkg ->
+            runCatching {
+                val pr = ProcessBuilder("am", "force-stop", pkg).redirectErrorStream(true).start()
+                pr.inputStream.bufferedReader().readText()
+                pr.waitFor()
+                appendLog("RELEASE FORCE-STOP", "displayId=$displayId pkg=$pkg")
+            }
+        }
         val session = sessions.remove(displayId)
         val vd = displays.remove(displayId)
         val sink = sinks.remove(displayId)

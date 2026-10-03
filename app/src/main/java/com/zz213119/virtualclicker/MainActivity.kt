@@ -347,6 +347,15 @@ class MainActivity : AppCompatActivity() {
             launchSelectedAppOnVirtualDisplay()
         }
 
+        findViewById<Button>(R.id.resetBackend).setOnClickListener {
+            if (currentDisplayId >= 0) releaseCurrentDisplay()
+            virtualDisplayStatus.text = "正在重启虚拟屏后台服务…"
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { VirtualDisplayManager.resetService() }
+                virtualDisplayStatus.text = "后台服务已重置，现在可以重新点“启动到虚拟屏”"
+            }
+        }
+
         findViewById<Button>(R.id.runYihuanShopTask).setOnClickListener {
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
@@ -885,7 +894,7 @@ class MainActivity : AppCompatActivity() {
 
             virtualDisplayStatus.text = "连接虚拟屏后端…"
 
-            val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
+            val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureFresh() }
             if (!bound) {
                 if (operation == displayOperationGeneration) {
                     virtualDisplayStatus.text = "连接失败（确认 Shizuku 已授权本应用）"

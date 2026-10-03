@@ -30,10 +30,39 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(5)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(6)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
+
+    @Volatile
+    private var connection: ServiceConnection? = null
+
+    /** 自上次重置后用这个后台进程创建过几块虚拟屏。 */
+    @Volatile
+    private var displaysSinceReset = 0
+
+    /**
+     * 彻底重启 Shizuku 后台服务进程（等价于你手动"重启一下"）。
+     * 旧进程会释放它名下所有虚拟屏并退出，下次 ensureBound() 会拉起全新的进程。
+     */
+    suspend fun resetService() {
+        val conn = connection
+        service = null
+        connection = null
+        displaysSinceReset = 0
+        if (conn != null) {
+            runCatching { Shizuku.unbindUserService(userServiceArgs, conn, true) }
+                .onFailure { Log.w(TAG, "unbindUserService(remove) failed", it) }
+        }
+        kotlinx.coroutines.delay(1200)
+    }
+
+    /** 创建新虚拟屏之前调用：如果这个后台进程已经建过/销毁过虚拟屏，就先换一个全新的进程。 */
+    suspend fun ensureFresh(): Boolean {
+        if (displaysSinceReset > 0) resetService()
+        return ensureBound()
+    }
 
     /** Binds the UserService. Safe to call repeatedly; a live binding is reused. */
     suspend fun ensureBound(): Boolean {
@@ -47,6 +76,7 @@ object VirtualDisplayManager {
         return suspendCoroutine { cont ->
             val connection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+                    connection = this
                     service = IVirtualDisplayService.Stub.asInterface(binder)
                     Log.i(TAG, "UserService connected")
                     cont.resume(true)
@@ -70,6 +100,7 @@ object VirtualDisplayManager {
         runCatching { service?.createVirtualDisplay(name, width, height, dpi) ?: -1 }
             .onFailure { Log.e(TAG, "createDisplay failed", it) }
             .getOrDefault(-1)
+            .also { if (it >= 0) displaysSinceReset++ }
 
     /** 带实时预览版本：surface 通常来自 MainActivity 里 SurfaceView 的 SurfaceHolder。 */
     fun createDisplayWithSurface(
