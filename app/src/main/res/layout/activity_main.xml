@@ -226,6 +226,13 @@
         </LinearLayout>
 
         <Button
+            android:id="@+id/relaunchGame"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="重启游戏（保留当前虚拟屏，不重建）" />
+
+        <Button
             android:id="@+id/resetBackend"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

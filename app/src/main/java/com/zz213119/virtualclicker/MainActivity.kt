@@ -347,6 +347,20 @@ class MainActivity : AppCompatActivity() {
             launchSelectedAppOnVirtualDisplay()
         }
 
+        findViewById<Button>(R.id.relaunchGame).setOnClickListener {
+            val pkg = selectedPackageName
+            val id = currentDisplayId
+            if (pkg == null || id < 0) {
+                Toast.makeText(this, "需要先有虚拟屏并选好应用", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            virtualDisplayStatus.text = "正在重启游戏（保留虚拟屏 #$id）…"
+            lifecycleScope.launch {
+                val ok = withContext(Dispatchers.IO) { VirtualDisplayManager.launch(pkg, id) }
+                virtualDisplayStatus.text = if (ok) "已在虚拟屏 #$id 重启 $pkg" else "重启失败，查看日志"
+            }
+        }
+
         findViewById<Button>(R.id.resetBackend).setOnClickListener {
             if (currentDisplayId >= 0) releaseCurrentDisplay()
             virtualDisplayStatus.text = "正在重启虚拟屏后台服务…"
@@ -894,7 +908,7 @@ class MainActivity : AppCompatActivity() {
 
             virtualDisplayStatus.text = "连接虚拟屏后端…"
 
-            val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureFresh() }
+            val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
             if (!bound) {
                 if (operation == displayOperationGeneration) {
                     virtualDisplayStatus.text = "连接失败（确认 Shizuku 已授权本应用）"
