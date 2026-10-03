@@ -213,7 +213,74 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         return launchAppExplicit(packageName, activity, displayId)
     }
 
-    override fun launchAppExplicit(packageName: String, activityName: String, displayId: Int): Boolean {
+    override fun launchAppExplicit(packageName: String, activityName: String, displayId: Int): Boolean =
+        launchOnce(packageName, activityName, displayId, allowRetry = true)
+
+    private fun waitProcessGone(pkg: String, timeoutMs: Long) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < end) {
+            val out = runCatching {
+                val p = ProcessBuilder("pidof", pkg).redirectErrorStream(true).start()
+                val t = p.inputStream.bufferedReader().readText().trim()
+                p.waitFor()
+                t
+            }.getOrDefault("")
+            if (out.isEmpty()) return
+            Thread.sleep(150)
+        }
+        appendLog("FORCE-STOP WAIT", "pkg=$pkg still alive after ${timeoutMs}ms")
+    }
+
+    private fun meanLuma(displayId: Int): Float? {
+        val bytes = captureFrame(displayId, 160) ?: return null
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        val px = IntArray(bmp.width * bmp.height)
+        bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+        var sum = 0L
+        for (c in px) {
+            sum += (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+        }
+        return sum.toFloat() / px.size
+    }
+
+    private fun dumpActivityDiag(pkg: String, displayId: Int) {
+        val out = runCatching {
+            val p = ProcessBuilder("dumpsys", "activity", "activities").redirectErrorStream(true).start()
+            val t = p.inputStream.bufferedReader().readText()
+            p.waitFor()
+            t
+        }.getOrDefault("")
+        val lines = out.lineSequence()
+            .filter {
+                it.contains(pkg) || it.contains("Display #") ||
+                    it.contains("ResumedActivity") || it.contains("displayId=$displayId")
+            }
+            .take(60)
+            .joinToString("\n") { it.trim().take(220) }
+        appendLog("LAUNCH DIAG", "displayId=$displayId pkg=$pkg\n$lines")
+    }
+
+    /** 启动后 5s/10s 各取一帧算平均亮度：判断是"真黑屏"还是预览问题；10s 仍全黑则强杀重开一次。 */
+    private fun startLaunchWatch(pkg: String, activityName: String, displayId: Int, allowRetry: Boolean) {
+        Thread {
+            runCatching {
+                for (i in 1..2) {
+                    Thread.sleep(5000)
+                    if (!displays.containsKey(displayId)) return@runCatching
+                    val luma = meanLuma(displayId)
+                    appendLog("LAUNCH WATCH", "displayId=$displayId check=$i luma=$luma")
+                    if (i == 1) dumpActivityDiag(pkg, displayId)
+                    if (luma != null && luma >= 3f) return@runCatching
+                }
+                if (!displays.containsKey(displayId)) return@runCatching
+                appendLog("LAUNCH BLACK", "displayId=$displayId still black after 10s retry=$allowRetry")
+                dumpActivityDiag(pkg, displayId)
+                if (allowRetry) launchOnce(pkg, activityName, displayId, allowRetry = false)
+            }.onFailure { appendLog("LAUNCH WATCH FAILED", it.stackTraceToString()) }
+        }.start()
+    }
+
+    private fun launchOnce(packageName: String, activityName: String, displayId: Int, allowRetry: Boolean): Boolean {
         return try {
             // 每次真正启动前先强杀一次目标包：--activity-multiple-task 只会不断
             // 建新 task，不会清掉上一次绑定在旧虚拟屏（此时已经销毁）上的旧
@@ -225,7 +292,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             val stopOutput = stopProc.inputStream.bufferedReader().readText()
             stopProc.waitFor()
             Log.i(TAG, "force-stop $packageName before relaunch: $stopOutput")
-            Thread.sleep(300)
+            appendLog("FORCE-STOP", "pkg=$packageName output=${stopOutput.trim()}")
+            // 等旧进程真正退出，避免新进程和正在退出的旧进程撞车
+            waitProcessGone(packageName, 3000)
+            Thread.sleep(500)
 
             // resolveLaunchActivity() may already return a fully-qualified
             // component such as com.example.app/.MainActivity. Avoid
@@ -259,6 +329,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // denied warnings); treat an explicit Error: line as failure too.
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
             if (ok) {
+                startLaunchWatch(packageName, activityName, displayId, allowRetry)
                 // Task discovery is diagnostic/cleanup metadata, not part of the
                 // launch critical path. Android 16/OEM task enumeration can lag
                 // behind am start, so do it asynchronously instead of delaying
