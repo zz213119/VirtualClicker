@@ -258,6 +258,39 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             .take(60)
             .joinToString("\n") { it.trim().take(220) }
         appendLog("LAUNCH DIAG", "displayId=$displayId pkg=$pkg\n$lines")
+
+        // 显示器/电源/窗口层面的状态：判断虚拟屏是否被系统当成"熄屏/休眠"
+        fun dump(vararg cmd: String): String = runCatching {
+            val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+            val t = pr.inputStream.bufferedReader().readText()
+            pr.waitFor()
+            t
+        }.getOrDefault("")
+        fun pick(text: String, max: Int, pred: (String) -> Boolean) =
+            text.lineSequence().filter(pred).take(max).joinToString("\n") { it.trim().take(260) }
+
+        val disp = pick(dump("dumpsys", "display"), 12) {
+            it.contains("vc_display_1") || it.contains("mDisplayId=$displayId") ||
+                it.contains("mGroupId") || it.contains("DisplayGroup", ignoreCase = true)
+        }
+        val power = pick(dump("dumpsys", "power"), 20) {
+            it.contains("Display Group", ignoreCase = true) || it.contains("wakefulness", ignoreCase = true)
+        }
+        val win = pick(dump("dumpsys", "window", "displays"), 20) {
+            it.contains("Display: mDisplayId=$displayId") || it.contains("sleeping", ignoreCase = true) ||
+                it.contains("mAwake", ignoreCase = true) || it.contains("mDisplayReady")
+        }
+        appendLog("LAUNCH DIAG STATE", "displayId=$displayId\n[display]\n$disp\n[power]\n$power\n[window]\n$win")
+    }
+
+    private fun wakeDisplay(displayId: Int) {
+        runCatching {
+            val pr = ProcessBuilder("input", "-d", displayId.toString(), "keyevent", "KEYCODE_WAKEUP")
+                .redirectErrorStream(true).start()
+            val out = pr.inputStream.bufferedReader().readText().trim()
+            val exit = pr.waitFor()
+            appendLog("WAKE KEY", "displayId=$displayId exit=$exit output=$out")
+        }
     }
 
     /** 启动后 5s/10s 各取一帧算平均亮度：判断是"真黑屏"还是预览问题；10s 仍全黑则强杀重开一次。 */
@@ -275,7 +308,9 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 if (!displays.containsKey(displayId)) return@runCatching
                 appendLog("LAUNCH BLACK", "displayId=$displayId still black after 10s retry=$allowRetry")
                 dumpActivityDiag(pkg, displayId)
-                if (allowRetry) launchOnce(pkg, activityName, displayId, allowRetry = false)
+                if (allowRetry && displays.containsKey(displayId)) {
+                    launchOnce(pkg, activityName, displayId, allowRetry = false)
+                }
             }.onFailure { appendLog("LAUNCH WATCH FAILED", it.stackTraceToString()) }
         }.start()
     }
@@ -329,6 +364,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // denied warnings); treat an explicit Error: line as failure too.
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
             if (ok) {
+                wakeDisplay(displayId)
                 startLaunchWatch(packageName, activityName, displayId, allowRetry)
                 // Task discovery is diagnostic/cleanup metadata, not part of the
                 // launch critical path. Android 16/OEM task enumeration can lag
