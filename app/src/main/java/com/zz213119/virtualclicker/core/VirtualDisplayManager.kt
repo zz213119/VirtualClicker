@@ -30,7 +30,7 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(6)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(7)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
@@ -165,6 +165,11 @@ object VirtualDisplayManager {
         runCatching { service?.captureFrame(displayId, maxWidth) }
             .onFailure { Log.e(TAG, "captureFrame failed", it) }
             .getOrNull()
+
+    fun releaseAll() {
+        runCatching { service?.releaseAllVirtualDisplays() }
+            .onFailure { Log.e(TAG, "releaseAll failed", it) }
+    }
 
     fun displaySize(displayId: Int): IntArray? =
         runCatching { service?.getDisplaySize(displayId) }

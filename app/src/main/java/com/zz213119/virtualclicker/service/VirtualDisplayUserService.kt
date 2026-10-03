@@ -260,7 +260,14 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             .joinToString("\n") { it.trim().take(220) }
         appendLog("LAUNCH DIAG", "displayId=$displayId pkg=$pkg\n$lines")
 
-        // 显示器/电源/窗口层面的状态：判断虚拟屏是否被系统当成"熄屏/休眠"
+        dumpDisplayState(displayId)
+    }
+
+    @Volatile
+    private var lastStateDumpAt = 0L
+
+    /** 显示器/电源/窗口层面的状态：判断虚拟屏是否被系统当成"熄屏/休眠"。 */
+    private fun dumpDisplayState(displayId: Int) {
         fun dump(vararg cmd: String): String = runCatching {
             val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
             val t = pr.inputStream.bufferedReader().readText()
@@ -282,6 +289,35 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 it.contains("mAwake", ignoreCase = true) || it.contains("mDisplayReady")
         }
         appendLog("LAUNCH DIAG STATE", "displayId=$displayId\n[display]\n$disp\n[power]\n$power\n[window]\n$win")
+    }
+
+    private val displayWakeLocks = ConcurrentHashMap<Int, android.os.PowerManager.WakeLock>()
+
+    /** 尝试给这块虚拟屏所在的显示组加一个"亮屏"唤醒锁（隐藏接口 newWakeLock(level,tag,displayId)）。 */
+    private fun keepDisplayAwake(displayId: Int) {
+        if (displayWakeLocks[displayId]?.isHeld == true) return
+        runCatching {
+            val pm = createShellContext().getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val m = android.os.PowerManager::class.java.getMethod(
+                "newWakeLock", Int::class.javaPrimitiveType, String::class.java, Int::class.javaPrimitiveType
+            )
+            val wl = m.invoke(pm, android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "vc:display$displayId", displayId)
+                as android.os.PowerManager.WakeLock
+            wl.setReferenceCounted(false)
+            wl.acquire()
+            displayWakeLocks[displayId] = wl
+            appendLog("DISPLAY WAKELOCK", "displayId=$displayId acquired held=${wl.isHeld}")
+        }.onFailure { appendLog("DISPLAY WAKELOCK FAILED", "displayId=$displayId ${it.stackTraceToString().take(600)}") }
+    }
+
+    private fun releaseDisplayWakeLock(displayId: Int) {
+        runCatching { displayWakeLocks.remove(displayId)?.let { if (it.isHeld) it.release() } }
+    }
+
+    override fun releaseAllVirtualDisplays() {
+        val ids = displays.keys.toList()
+        appendLog("RELEASE ALL", "ids=$ids")
+        ids.forEach { runCatching { releaseVirtualDisplay(it) } }
     }
 
     private fun wakeDisplay(displayId: Int) {
@@ -366,6 +402,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
             if (ok) launchedPackages[displayId] = packageName
             if (ok) {
+                keepDisplayAwake(displayId)
                 wakeDisplay(displayId)
                 startLaunchWatch(packageName, activityName, displayId, allowRetry)
                 // Task discovery is diagnostic/cleanup metadata, not part of the
@@ -460,6 +497,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 if (image == null) image = reader.acquireLatestImage()
                 if (image == null) {
                     appendLog("CAPTURE FAILED", "displayId=$displayId\nreason=no_image_timeout switched=$switched")
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastStateDumpAt > 60_000) {
+                        lastStateDumpAt = nowMs
+                        Thread {
+                            runCatching {
+                                dumpDisplayState(displayId)
+                                keepDisplayAwake(displayId)
+                                wakeDisplay(displayId)
+                            }
+                        }.start()
+                    }
                     return null
                 }
                 try {
@@ -511,6 +559,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      */
     private fun cleanupDisplay(displayId: Int, reason: String) {
         attachedSurfaces.remove(displayId)
+        releaseDisplayWakeLock(displayId)
         // 释放前先强杀这块屏上启动的应用：否则销毁虚拟屏时它的任务会被系统挪回主屏残留，
         // 反复开关后残留任务/进程越积越多。
         launchedPackages.remove(displayId)?.let { pkg ->

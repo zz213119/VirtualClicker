@@ -61,6 +61,10 @@ interface IVirtualDisplayService {
     // Returns {width, height} of the virtual display in pixels, or null.
     int[] getDisplaySize(int displayId);
 
+    // Releases every virtual display this service still owns (stale ones left by a
+    // previous app process, etc.).
+    void releaseAllVirtualDisplays();
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }

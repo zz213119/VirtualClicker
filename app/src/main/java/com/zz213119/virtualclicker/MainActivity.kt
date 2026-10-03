@@ -908,7 +908,9 @@ class MainActivity : AppCompatActivity() {
 
             virtualDisplayStatus.text = "连接虚拟屏后端…"
 
-            val bound = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
+            val bound = withContext(Dispatchers.IO) {
+                VirtualDisplayManager.ensureBound().also { if (it) VirtualDisplayManager.releaseAll() }
+            }
             if (!bound) {
                 if (operation == displayOperationGeneration) {
                     virtualDisplayStatus.text = "连接失败（确认 Shizuku 已授权本应用）"
