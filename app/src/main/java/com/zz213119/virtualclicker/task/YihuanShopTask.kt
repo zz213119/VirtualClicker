@@ -68,8 +68,8 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
         private const val MAX_LOOPS = 60
         private const val PLAY_TIMEOUT_MS = 150_000L
         private const val HAMMER_HOLD_MS = 20L      // 每次点击按下到抬起的时间
-        private const val HAMMER_INTERVAL_MS = 60L  // 两次点击之间的间隔（越小越快）
-        private const val POLL_MS = 600L            // 检测分数/结算画面的间隔
+        private const val HAMMER_PERIOD_MS = 800L   // 锤子固定每 0.8 秒点一次（按固定节拍，不追赶不加速）
+        private const val POLL_MS = 1000L           // 检测分数/结算画面的间隔（放慢可降低发热）
 
         private const val SHOT_DIR =
             "/storage/emulated/0/Android/data/com.zz213119.virtualclicker/files/shots"
@@ -122,7 +122,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
         return null
     }
 
-    private suspend fun waitFor(timeoutMs: Long, intervalMs: Long = 700, cond: (Bitmap) -> Boolean): Bitmap? {
+    private suspend fun waitFor(timeoutMs: Long, intervalMs: Long = 1000, cond: (Bitmap) -> Boolean): Bitmap? {
         val end = now() + timeoutMs
         while (true) {
             val f = grab()
@@ -251,6 +251,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             val tapJob = CoroutineScope(currentCoroutineContext()).launch {
                 var shellFallback = false
                 var n = 0
+                var next = SystemClock.uptimeMillis()
                 while (isActive) {
                     val x = HAMMER_X * w
                     val y = HAMMER_Y * h
@@ -267,8 +268,10 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
                         tap(HAMMER_X, HAMMER_Y)
                     }
                     n++
-                    if (n == 1 || n % 100 == 0) log("hammer taps=$n shellFallback=$shellFallback")
-                    delay(HAMMER_INTERVAL_MS)
+                    if (n == 1 || n % 20 == 0) log("hammer taps=$n shellFallback=$shellFallback")
+                    next += HAMMER_PERIOD_MS
+                    val wait = next - SystemClock.uptimeMillis()
+                    if (wait > 0) delay(wait) else next = SystemClock.uptimeMillis() // 落后了就重新对齐，绝不补点
                 }
             }
             var reached = false
