@@ -6,4 +6,42 @@
         <item name="android:statusBarColor">@android:color/white</item>
         <item name="android:navigationBarColor">@android:color/black</item>
     </style>
+
+    <style name="Widget.VC.Button" parent="Widget.AppCompat.Button">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">44dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">0dp</item>
+    </style>
+    <style name="Widget.VC.Button.Filled">
+        <item name="android:background">@drawable/bg_btn_filled</item>
+        <item name="android:textColor">@color/vc_on_primary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="Widget.VC.Button.Tonal">
+        <item name="android:background">@drawable/bg_btn_tonal</item>
+        <item name="android:textColor">@color/vc_on_tonal</item>
+    </style>
+    <style name="VC.Section" parent="android:Widget.TextView">
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/vc_text</item>
+    </style>
+    <style name="VC.Body" parent="android:Widget.TextView">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/vc_text</item>
+    </style>
+    <style name="VC.Caption" parent="android:Widget.TextView">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/vc_text2</item>
+    </style>
+    <style name="VC.Edit" parent="Widget.AppCompat.EditText">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/vc_text</item>
+        <item name="android:textColorHint">@color/vc_text2</item>
+    </style>
 </resources>

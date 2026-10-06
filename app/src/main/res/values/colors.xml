@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vc_bg">#F6F4FA</color>
+    <color name="vc_card">#FFFFFF</color>
+    <color name="vc_primary">#5B4FC4</color>
+    <color name="vc_on_primary">#FFFFFF</color>
+    <color name="vc_tonal">#E6DFF7</color>
+    <color name="vc_on_tonal">#3A2F7A</color>
+    <color name="vc_text">#1D1B20</color>
+    <color name="vc_text2">#625B71</color>
+    <color name="vc_outline">#E7E0EB</color>
+</resources>

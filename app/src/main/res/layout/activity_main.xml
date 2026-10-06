@@ -1,97 +1,101 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/vc_bg"
+    android:theme="@style/ThemeOverlay.AppCompat.Light">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingHorizontal="16dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="28dp">
 
         <TextView
             android:id="@+id/title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="VirtualClicker"
-            android:textSize="28sp"
+            android:textColor="@color/vc_text"
+            android:textSize="26sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/subtitle"
+            style="@style/VC.Caption"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="通用后台自动点击器 · Shizuku 优先"
-            android:textSize="15sp" />
+            android:layout_marginTop="2dp"
+            android:text="通用后台自动点击器 · Shizuku 优先" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <TextView
             android:id="@+id/shizukuStatus"
+            style="@style/VC.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Shizuku：检查中…"
-            android:textSize="17sp" />
-
-        <Button
-            android:id="@+id/shizukuPermission"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="请求 Shizuku 授权" />
-
-        <Button
-            android:id="@+id/bindBackend"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="连接 Shizuku 后端" />
-
+            android:text="Shizuku：检查中…" />
         <TextView
             android:id="@+id/backendStatus"
+            style="@style/VC.Body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="后台后端：未连接"
-            android:textSize="16sp" />
-
-        <Button
-            android:id="@+id/listApps"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="查看可添加应用" />
-
-        <TextView
-            android:id="@+id/appList"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text=""
-            android:textSize="14sp" />
-
-        <Button
-            android:id="@+id/openScriptEditor"
+            android:layout_marginTop="6dp"
+            android:text="后台后端：未连接" />
+        <LinearLayout
+            android:id="@+id/connectRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="打开脚本编辑器（自动精灵模式）" />
+            android:orientation="horizontal">
+        <Button
+            android:id="@+id/shizukuPermission"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="请求授权" />
+        <Button
+            android:id="@+id/bindBackend"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="连接后端" />
+        </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <TextView
             android:id="@+id/launchVirtualDisplayLabel"
+            style="@style/VC.Section"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="虚拟屏预览"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
+            android:text="虚拟屏" />
         <com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
             android:id="@+id/previewContainer"
             android:layout_width="240dp"
             android:layout_height="426dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_preview_container"
             android:clipToOutline="true"
             android:clipChildren="true">
@@ -160,278 +164,347 @@
             </LinearLayout>
 
         </com.zz213119.virtualclicker.ui.AspectRatioFrameLayout>
-
         <TextView
             android:id="@+id/resolutionLabel"
-            android:layout_width="wrap_content"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="虚拟屏分辨率"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
+            android:layout_marginTop="12dp"
+            android:text="分辨率" />
         <Spinner
             android:id="@+id/resolutionSpinner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="2dp"
             android:spinnerMode="dropdown" />
-
         <TextView
             android:id="@+id/resolutionInfo"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="当前：自动竖屏"
-            android:textSize="13sp"
-            android:textColor="#5F6368" />
-
+            android:layout_marginTop="2dp"
+            android:text="当前：自动竖屏" />
         <Button
             android:id="@+id/displayModeButton"
+            style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="8dp"
             android:text="游戏模式：关闭（自动比例）" />
-
         <TextView
             android:id="@+id/manualControlHint"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）"
-            android:textSize="12sp"
-            android:textColor="#5F6368" />
-
+            android:text="双击预览画面：进入本人手动控制；点左上角 ✕ 结束控制（不会关闭虚拟屏）" />
         <LinearLayout
             android:id="@+id/launchRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/launchVirtualDisplay"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="启动到虚拟屏" />
-
-            <Button
-                android:id="@+id/closeVirtualDisplay"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="关闭虚拟屏" />
+        <Button
+            android:id="@+id/launchVirtualDisplay"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="启动到虚拟屏" />
+        <Button
+            android:id="@+id/closeVirtualDisplay"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="关闭虚拟屏" />
         </LinearLayout>
-
+        <LinearLayout
+            android:id="@+id/maintRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
         <Button
             android:id="@+id/relaunchGame"
-            android:layout_width="match_parent"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="重启游戏（保留当前虚拟屏，不重建）" />
-
+            android:layout_weight="1"
+            android:text="重启游戏" />
         <Button
             android:id="@+id/resetBackend"
-            android:layout_width="match_parent"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="重置虚拟屏后台服务（黑屏时点）" />
-
-        <Button
-            android:id="@+id/runYihuanShopTask"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="异环：店长特供 1-1 自动刷（体力耗尽时通知）" />
-
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="重置后台服务" />
+        </LinearLayout>
         <TextView
             android:id="@+id/virtualDisplayStatus"
+            style="@style/VC.Body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text=""
-            android:textSize="14sp" />
+            android:text="" />
 
-        <TextView
-            android:id="@+id/inputTitle"
-            android:layout_width="wrap_content"
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="虚拟屏输入测试"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <TextView
-            android:id="@+id/inputHelp"
+            android:id="@+id/yihuanTitle"
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="异环 · 店长特供 1-1" />
+        <TextView
+            android:id="@+id/yihuanHelp"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="输入坐标会发送到当前 Virtual Display，不会点击手机主屏。"
-            android:textSize="13sp" />
+            android:text="循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在上面启动虚拟屏。" />
+        <Button
+            android:id="@+id/runYihuanShopTask"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="开始自动刷" />
 
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            android:id="@+id/appsTitle"
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="应用与脚本" />
+        <Button
+            android:id="@+id/listApps"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="选择要放进虚拟屏的应用" />
+        <TextView
+            android:id="@+id/appList"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="" />
+        <Button
+            android:id="@+id/openScriptEditor"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="脚本编辑器（自动精灵模式）" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            android:id="@+id/inputTitle"
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="调试工具 · 输入测试" />
+        <TextView
+            android:id="@+id/inputHelp"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="输入坐标会发送到当前虚拟屏，不会点击手机主屏。" />
         <LinearLayout
             android:id="@+id/inputRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="6dp"
             android:orientation="horizontal">
-
             <EditText
                 android:id="@+id/inputX"
+                style="@style/VC.Edit"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:hint="X"
                 android:inputType="numberDecimal" />
-
             <EditText
                 android:id="@+id/inputY"
+                style="@style/VC.Edit"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:layout_weight="1"
+                android:layout_marginStart="8dp"
                 android:hint="Y"
                 android:inputType="numberDecimal" />
-
             <EditText
                 android:id="@+id/inputDuration"
+                style="@style/VC.Edit"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:layout_weight="1"
+                android:layout_marginStart="8dp"
                 android:hint="长按(ms)"
                 android:inputType="number" />
         </LinearLayout>
-
-
-        <TextView
-            android:id="@+id/autoClickTitle"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:id="@+id/testRow"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="连点器"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+        <Button
+            android:id="@+id/testTap"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="测试点击" />
+        <Button
+            android:id="@+id/testLongPress"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="测试长按" />
+        </LinearLayout>
+        <Button
+            android:id="@+id/pickCoordinate"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="取点坐标（点击预览获取 X/Y）" />
         <TextView
-            android:id="@+id/autoClickHelp"
+            android:id="@+id/pickCoordinateStatus"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="使用上面的 X/Y 作为点击坐标；间隔为两次点击之间的等待时间；次数填 0 表示无限点击。"
-            android:textSize="13sp" />
-
+            android:text="取点模式：未开启" />
+        <TextView
+            android:id="@+id/autoClickTitle"
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="连点器" />
+        <TextView
+            android:id="@+id/autoClickHelp"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="使用上面的 X/Y 作为点击坐标；间隔为两次点击之间的等待时间；次数填 0 表示无限点击。" />
         <LinearLayout
             android:id="@+id/autoClickRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="6dp"
             android:orientation="horizontal">
-
             <EditText
                 android:id="@+id/autoClickInterval"
+                style="@style/VC.Edit"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:hint="间隔(ms)"
                 android:inputType="number"
                 android:text="500" />
-
             <EditText
                 android:id="@+id/autoClickCount"
+                style="@style/VC.Edit"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:layout_weight="1"
+                android:layout_marginStart="8dp"
                 android:hint="次数(0=无限)"
                 android:inputType="number"
                 android:text="0" />
         </LinearLayout>
-
         <LinearLayout
             android:id="@+id/autoClickButtons"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/startAutoClick"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="开始连点" />
-
-            <Button
-                android:id="@+id/stopAutoClick"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="停止连点" />
+        <Button
+            android:id="@+id/startAutoClick"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="开始连点" />
+        <Button
+            android:id="@+id/stopAutoClick"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="停止连点" />
         </LinearLayout>
-
         <TextView
             android:id="@+id/autoClickStatus"
+            style="@style/VC.Body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="连点器：未运行"
-            android:textSize="14sp" />
-
-        <Button
-            android:id="@+id/pickCoordinate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="取点坐标（点击预览获取 X/Y）" />
-
-        <TextView
-            android:id="@+id/pickCoordinateStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="取点模式：未开启"
-            android:textSize="13sp" />
-
-        <Button
-            android:id="@+id/testTap"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="测试点击" />
-
-        <Button
-            android:id="@+id/testLongPress"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="测试长按" />
-
+            android:text="连点器：未运行" />
         <Button
             android:id="@+id/releaseVirtualDisplay"
+            style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="释放当前虚拟屏" />
-
         <TextView
             android:id="@+id/inputTestStatus"
+            style="@style/VC.Body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text=""
-            android:textSize="14sp" />
+            android:text="" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/roadmap"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="16dp"
             android:text="V0.1 开发目标：Shizuku → UserService → Virtual Display → Display 定向输入 → 任务引擎"
-            android:textSize="14sp" />
+            android:gravity="center" />
 
     </LinearLayout>
 </ScrollView>
