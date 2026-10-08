@@ -18,6 +18,10 @@ object AlertNotifier {
     private const val NOTIFICATION_ID = 2001
 
     fun notify(ctx: Context, title: String, text: String) {
+        if (!com.zz213119.virtualclicker.core.Prefs.notifyEnabled(ctx)) {
+            LogWriter.write("NOTIFY OFF", "$title / $text")
+            return
+        }
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(

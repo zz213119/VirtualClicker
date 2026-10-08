@@ -1,12 +1,21 @@
 package com.zz213119.virtualclicker.core
 
 import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
 import com.zz213119.virtualclicker.BuildConfig
 import com.zz213119.virtualclicker.service.IVirtualDisplayService
 import com.zz213119.virtualclicker.service.VirtualDisplayUserService
+import com.topjohnwu.superuser.Shell
+import com.topjohnwu.superuser.ipc.RootService
+import com.zz213119.virtualclicker.service.VcRootService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -30,10 +39,33 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(7)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(8)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
+
+    @Volatile
+    private var appContext: Context? = null
+
+    /** 当前这条连接是用哪种模式建的（重置时要按它来拆）。 */
+    @Volatile
+    private var boundMode: String = Prefs.MODE_SHIZUKU
+
+    fun init(ctx: Context) {
+        appContext = ctx.applicationContext
+    }
+
+    private fun currentMode(): String =
+        appContext?.let { Prefs.backendMode(it) } ?: Prefs.MODE_SHIZUKU
+
+    private fun pushOptions() {
+        val ctx = appContext ?: return
+        runCatching { service?.setKeepDisplayAwake(Prefs.keepDisplayAwake(ctx)) }
+    }
+
+    fun setKeepDisplayAwake(enabled: Boolean) {
+        runCatching { service?.setKeepDisplayAwake(enabled) }
+    }
 
     @Volatile
     private var connection: ServiceConnection? = null
@@ -48,12 +80,22 @@ object VirtualDisplayManager {
      */
     suspend fun resetService() {
         val conn = connection
+        val modeAtBind = boundMode
         service = null
         connection = null
         displaysSinceReset = 0
         if (conn != null) {
-            runCatching { Shizuku.unbindUserService(userServiceArgs, conn, true) }
-                .onFailure { Log.w(TAG, "unbindUserService(remove) failed", it) }
+            if (modeAtBind == Prefs.MODE_ROOT) {
+                withContext(Dispatchers.Main) {
+                    runCatching { RootService.unbind(conn) }
+                    appContext?.let { c ->
+                        runCatching { RootService.stop(Intent(c, VcRootService::class.java)) }
+                    }
+                }
+            } else {
+                runCatching { Shizuku.unbindUserService(userServiceArgs, conn, true) }
+                    .onFailure { Log.w(TAG, "unbindUserService(remove) failed", it) }
+            }
         }
         kotlinx.coroutines.delay(1200)
     }
@@ -67,7 +109,44 @@ object VirtualDisplayManager {
     /** Binds the UserService. Safe to call repeatedly; a live binding is reused. */
     suspend fun ensureBound(): Boolean {
         service?.let { return true }
+        return if (currentMode() == Prefs.MODE_ROOT) bindRoot() else bindShizuku()
+    }
 
+    private suspend fun bindRoot(): Boolean {
+        val ctx = appContext ?: return false
+        val hasRoot = withContext(Dispatchers.IO) {
+            runCatching { Shell.getShell().isRoot }.getOrDefault(false)
+        }
+        if (!hasRoot) {
+            Log.e(TAG, "root not granted")
+            return false
+        }
+        val intent = Intent(ctx, VcRootService::class.java)
+        return withContext(Dispatchers.Main) {
+            withTimeoutOrNull(20_000) {
+                suspendCancellableCoroutine<Boolean> { cont ->
+                    val conn = object : ServiceConnection {
+                        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+                            connection = this
+                            boundMode = Prefs.MODE_ROOT
+                            service = IVirtualDisplayService.Stub.asInterface(binder)
+                            pushOptions()
+                            Log.i(TAG, "Root service connected")
+                            if (cont.isActive) cont.resume(true)
+                        }
+
+                        override fun onServiceDisconnected(name: ComponentName) {
+                            Log.w(TAG, "Root service disconnected")
+                            service = null
+                        }
+                    }
+                    RootService.bind(intent, conn)
+                }
+            } ?: false
+        }
+    }
+
+    private suspend fun bindShizuku(): Boolean {
         if (!Shizuku.pingBinder()) {
             Log.e(TAG, "Shizuku not running / not authorized")
             return false
@@ -77,7 +156,9 @@ object VirtualDisplayManager {
             val connection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                     connection = this
+                    boundMode = Prefs.MODE_SHIZUKU
                     service = IVirtualDisplayService.Stub.asInterface(binder)
+                    pushOptions()
                     Log.i(TAG, "UserService connected")
                     cont.resume(true)
                 }

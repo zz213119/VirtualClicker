@@ -16,6 +16,25 @@
         android:theme="@style/Theme.VirtualClicker">
 
         <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <service
+            android:name=".service.VcRootService"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:theme="@style/Theme.VirtualClicker.Light"
+            android:exported="false" />
+
+        <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
             android:multiprocess="false"

@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/vc_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="28dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="设置"
+                android:textColor="@color/vc_text"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/backButton"
+                style="@style/Widget.VC.Button.Tonal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="返回" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="启动模式" />
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="选择后台服务用哪种方式获得权限。切换后会自动重置后台服务，需要重新“启动到虚拟屏”。" />
+        <RadioGroup
+            android:id="@+id/modeGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/modeShizuku"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="Shizuku"
+                android:textColor="@color/vc_text" />
+
+            <RadioButton
+                android:id="@+id/modeRoot"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="Root"
+                android:textColor="@color/vc_text" />
+        </RadioGroup>
+        <TextView
+            android:id="@+id/modeStatus"
+            style="@style/VC.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="状态：未检测" />
+        <Button
+            android:id="@+id/checkMode"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="检测当前模式" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="任务参数 · 异环" />
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="锤子点击间隔（毫秒，200–5000）" />
+        <EditText
+            android:id="@+id/hammerPeriod"
+            style="@style/VC.Edit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="800"
+            android:inputType="number"
+            android:singleLine="true" />
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="最多循环轮数（1–1000）" />
+        <EditText
+            android:id="@+id/maxLoops"
+            style="@style/VC.Edit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="60"
+            android:inputType="number"
+            android:singleLine="true" />
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="体力降到多少以下停止并通知（0=耗尽）" />
+        <EditText
+            android:id="@+id/staminaStop"
+            style="@style/VC.Edit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="0"
+            android:inputType="number"
+            android:singleLine="true" />
+        <Button
+            android:id="@+id/saveParams"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="保存参数" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="通知与后台保活" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchNotify"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:minHeight="44dp"
+            android:text="任务结束/中断时发通知"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+        <Button
+            android:id="@+id/openNotifSettings"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="打开系统通知设置" />
+        <TextView
+            android:id="@+id/batteryStatus"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="电池优化：检查中" />
+        <Button
+            android:id="@+id/openBattery"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="加入电池优化白名单" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchCpuLock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:minHeight="44dp"
+            android:text="任务运行时保持 CPU 唤醒"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchKeepAwake"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:minHeight="44dp"
+            android:text="保持虚拟屏亮屏（息屏后防休眠，实验）"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchDebug"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:minHeight="44dp"
+            android:text="在主页显示调试工具（输入测试/连点器）"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="日志与诊断" />
+        <TextView
+            android:id="@+id/logPath"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="日志目录：Android/data/com.zz213119.virtualclicker/files/logs" />
+        <Button
+            android:id="@+id/shareLog"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="分享最新日志" />
+        <Button
+            android:id="@+id/clearLogs"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="清理日志与截图" />
+        <Button
+            android:id="@+id/resetBackendBtn"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="重置后台服务" />
+        <TextView
+            android:id="@+id/logStatus"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="关于" />
+        <TextView
+            android:id="@+id/versionText"
+            style="@style/VC.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="VirtualClicker" />
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="项目主页（点击打开）" />
+        <TextView
+            android:id="@+id/githubLink"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="44dp"
+            android:gravity="center_vertical"
+            android:text="https://github.com/zz213119/VirtualClicker"
+            android:textColor="@color/vc_primary"
+            android:textSize="14sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

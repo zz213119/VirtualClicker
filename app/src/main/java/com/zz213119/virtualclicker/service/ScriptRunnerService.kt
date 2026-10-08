@@ -60,6 +60,7 @@ class ScriptRunnerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        VirtualDisplayManager.init(applicationContext)
         when (intent?.action) {
             ACTION_STOP -> {
                 stopRunner()
@@ -200,6 +201,10 @@ class ScriptRunnerService : Service() {
     private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     private fun acquireWakeLock() {
+        if (!com.zz213119.virtualclicker.core.Prefs.cpuWakeLock(this)) {
+            LogWriter.write("WAKELOCK", "disabled in settings")
+            return
+        }
         runCatching {
             if (wakeLock?.isHeld == true) return
             val pm = getSystemService(android.os.PowerManager::class.java)

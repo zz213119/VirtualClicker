@@ -9,6 +9,8 @@
 
     <style name="Theme.VirtualClicker.Light" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
+        <item name="colorPrimary">@color/vc_primary</item>
+        <item name="colorAccent">@color/vc_primary</item>
         <item name="android:windowBackground">@color/vc_bg</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@color/vc_bg</item>

@@ -63,17 +63,18 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
         // ---- 阈值 ----
         private const val ANCHOR_MAX = 15f          // 锚点差异(平均亮度差)，匹配≈0~4，不匹配>30
         private const val PURPLE_MIN = 0.25f        // 1-1 被选中时紫色占比约 0.67
-        private const val STAMINA_STOP = 0          // 体力 <= 此值视为耗尽
         private const val START_MIN_COST = 6        // "开始营业"最多消耗 6
-        private const val MAX_LOOPS = 60
         private const val PLAY_TIMEOUT_MS = 150_000L
         private const val HAMMER_HOLD_MS = 20L      // 每次点击按下到抬起的时间
-        private const val HAMMER_PERIOD_MS = 800L   // 锤子固定每 0.8 秒点一次（按固定节拍，不追赶不加速）
         private const val POLL_MS = 1000L           // 检测分数/结算画面的间隔（放慢可降低发热）
 
         private const val SHOT_DIR =
             "/storage/emulated/0/Android/data/com.zz213119.virtualclicker/files/shots"
     }
+
+    private val hammerPeriodMs = com.zz213119.virtualclicker.core.Prefs.hammerPeriodMs(ctx)
+    private val maxLoops = com.zz213119.virtualclicker.core.Prefs.maxLoops(ctx)
+    private val staminaStop = com.zz213119.virtualclicker.core.Prefs.staminaStop(ctx)
 
     private var w = 1920
     private var h = 1080
@@ -212,7 +213,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
         }
         log("in shop page")
 
-        while (loops < MAX_LOOPS) {
+        while (loops < maxLoops) {
             loops++
             val tLoop = now()
 
@@ -221,7 +222,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             log("list at top=$top")
             val st = readStamina()
             log("stamina=$st")
-            if (st != null && st.cur <= STAMINA_STOP) return exhausted(st, "体力已读到 0。")
+            if (st != null && st.cur <= staminaStop) return exhausted(st, "体力已读到 ${st.cur}（停止阈值 $staminaStop）。")
 
             // 3. 选中 1-1
             var selected = false
@@ -269,7 +270,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
                     }
                     n++
                     if (n == 1 || n % 20 == 0) log("hammer taps=$n shellFallback=$shellFallback")
-                    next += HAMMER_PERIOD_MS
+                    next += hammerPeriodMs
                     val wait = next - SystemClock.uptimeMillis()
                     if (wait > 0) delay(wait) else next = SystemClock.uptimeMillis() // 落后了就重新对齐，绝不补点
                 }
@@ -326,6 +327,6 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             log("loop done total=$done in ${(now() - tLoop) / 1000}s")
             delay(800)
         }
-        return Outcome(true, "异环：已达循环上限", "已连续完成 $done 次（上限 $MAX_LOOPS），请检查体力。")
+        return Outcome(true, "异环：已达循环上限", "已连续完成 $done 次（上限 $maxLoops），请检查体力。")
     }
 }

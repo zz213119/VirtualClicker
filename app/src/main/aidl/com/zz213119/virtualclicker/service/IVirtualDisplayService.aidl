@@ -65,6 +65,9 @@ interface IVirtualDisplayService {
     // previous app process, etc.).
     void releaseAllVirtualDisplays();
 
+    // Whether to hold a per-display screen wake lock for launched virtual displays.
+    void setKeepDisplayAwake(boolean enabled);
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }

@@ -293,8 +293,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     private val displayWakeLocks = ConcurrentHashMap<Int, android.os.PowerManager.WakeLock>()
 
+    @Volatile
+    private var keepAwakeEnabled = true
+
+    override fun setKeepDisplayAwake(enabled: Boolean) {
+        keepAwakeEnabled = enabled
+        appendLog("OPTION", "keepDisplayAwake=$enabled")
+    }
+
     /** 尝试给这块虚拟屏所在的显示组加一个"亮屏"唤醒锁（隐藏接口 newWakeLock(level,tag,displayId)）。 */
     private fun keepDisplayAwake(displayId: Int) {
+        if (!keepAwakeEnabled) return
         if (displayWakeLocks[displayId]?.isHeld == true) return
         runCatching {
             val pm = createShellContext().getSystemService(Context.POWER_SERVICE) as android.os.PowerManager

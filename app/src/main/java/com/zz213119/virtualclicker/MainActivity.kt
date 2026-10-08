@@ -23,6 +23,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
+import com.topjohnwu.superuser.Shell
+import com.zz213119.virtualclicker.core.Prefs
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
 import com.zz213119.virtualclicker.service.AutoClickService
 import com.zz213119.virtualclicker.service.ScriptRunBus
@@ -305,17 +307,38 @@ class MainActivity : AppCompatActivity() {
         }
 
         controller = ShizukuController(packageName)
+        VirtualDisplayManager.init(this)
+
+        findViewById<Button>(R.id.openSettings).setOnClickListener {
+            startActivity(Intent(this, com.zz213119.virtualclicker.ui.SettingsActivity::class.java))
+        }
 
         Shizuku.addBinderReceivedListener(binderListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
 
         findViewById<Button>(R.id.shizukuPermission).setOnClickListener {
+            if (Prefs.backendMode(this) == Prefs.MODE_ROOT) {
+                shizukuStatus.text = "Root：检测中…"
+                lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) { runCatching { Shell.getShell().isRoot }.getOrDefault(false) }
+                    shizukuStatus.text = if (ok) "Root：已授权" else "Root：不可用或被拒绝"
+                }
+                return@setOnClickListener
+            }
             if (controller.isShizukuAvailable()) controller.requestPermission()
             else shizukuStatus.text = "Shizuku：未运行"
             refreshStatus()
         }
 
         findViewById<Button>(R.id.bindBackend).setOnClickListener {
+            if (Prefs.backendMode(this) == Prefs.MODE_ROOT) {
+                backendStatus.text = "后台后端：Root 连接中…"
+                lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
+                    backendStatus.text = if (ok) "后台后端：Root 已连接" else "后台后端：Root 连接失败"
+                }
+                return@setOnClickListener
+            }
             controller.bind { connected ->
                 runOnUiThread {
                     if (connected) {
@@ -1195,7 +1218,18 @@ class MainActivity : AppCompatActivity() {
         controller.unbind()
         super.onDestroy()
     }
+    override fun onResume() {
+        super.onResume()
+        findViewById<android.view.View>(R.id.debugCard).visibility =
+            if (Prefs.showDebugTools(this)) android.view.View.VISIBLE else android.view.View.GONE
+        refreshStatus()
+    }
+
     private fun refreshStatus() {
+        if (Prefs.backendMode(this) == Prefs.MODE_ROOT) {
+            shizukuStatus.text = "启动模式：Root（点“请求授权”检测）"
+            return
+        }
         val available = controller.isShizukuAvailable()
         val granted = runCatching { controller.hasPermission() }.getOrDefault(false)
         shizukuStatus.text = when {
