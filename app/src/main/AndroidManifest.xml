@@ -25,6 +25,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:theme="@style/Theme.VirtualClicker.Light"
             android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout">
             <intent-filter>
@@ -35,10 +36,12 @@
 
         <activity
             android:name=".ui.AppPickerActivity"
+            android:theme="@style/Theme.VirtualClicker.Light"
             android:exported="false" />
 
         <activity
             android:name=".ui.ScriptEditorActivity"
+            android:theme="@style/Theme.VirtualClicker.Light"
             android:exported="false" />
 
         <service

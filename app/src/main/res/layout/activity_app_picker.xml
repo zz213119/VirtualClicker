@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:fitsSystemWindows="true"
-    android:background="#FFFFFF">
+    android:background="@color/vc_bg">
 
     <TextView
         android:id="@+id/pickerTitle"
@@ -12,6 +12,7 @@
         android:layout_height="wrap_content"
         android:layout_margin="20dp"
         android:text="选择应用"
+        android:textColor="@color/vc_text"
         android:textSize="22sp"
         android:textStyle="bold" />
 
@@ -33,6 +34,8 @@
             android:layout_weight="1"
             android:background="@null"
             android:hint="搜索应用名称或包名"
+            android:textColor="@color/vc_text"
+            android:textColorHint="@color/vc_text2"
             android:singleLine="true"
             android:inputType="text" />
     </LinearLayout>
@@ -63,7 +66,7 @@
             android:layout_weight="1"
             android:gravity="center"
             android:text="系统应用"
-            android:textColor="#333333" />
+            android:textColor="@color/vc_on_tonal" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -86,6 +89,7 @@
             android:layout_weight="1"
             android:gravity="center"
             android:text="取消"
+            android:textColor="@color/vc_text2"
             android:textSize="16sp" />
 
         <TextView
@@ -95,6 +99,7 @@
             android:layout_weight="1"
             android:gravity="center"
             android:text="确定"
+            android:textColor="@color/vc_primary"
             android:textStyle="bold"
             android:textSize="16sp" />
     </LinearLayout>

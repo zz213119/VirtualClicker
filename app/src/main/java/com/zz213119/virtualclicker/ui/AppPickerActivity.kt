@@ -102,11 +102,11 @@ class AppPickerActivity : AppCompatActivity() {
         tabUserApps.setBackgroundResource(
             if (tab == Tab.USER) R.drawable.bg_tab_selected else 0
         )
-        tabUserApps.setTextColor(if (tab == Tab.USER) 0xFFFFFFFF.toInt() else 0xFF333333.toInt())
+        tabUserApps.setTextColor(if (tab == Tab.USER) 0xFFFFFFFF.toInt() else 0xFF3A2F7A.toInt())
         tabSystemApps.setBackgroundResource(
             if (tab == Tab.SYSTEM) R.drawable.bg_tab_selected else 0
         )
-        tabSystemApps.setTextColor(if (tab == Tab.SYSTEM) 0xFFFFFFFF.toInt() else 0xFF333333.toInt())
+        tabSystemApps.setTextColor(if (tab == Tab.SYSTEM) 0xFFFFFFFF.toInt() else 0xFF3A2F7A.toInt())
         applyFilter()
     }
 

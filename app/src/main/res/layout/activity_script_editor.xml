@@ -1,179 +1,205 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/vc_bg">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingHorizontal="16dp"
+        android:paddingTop="20dp"
+        android:paddingBottom="28dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="脚本编辑器"
-            android:textSize="28sp"
+            android:textColor="@color/vc_text"
+            android:textSize="26sp"
             android:textStyle="bold" />
 
         <TextView
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="自动精灵式动作脚本 · 动作最终由 Virtual Display 执行"
-            android:textSize="14sp" />
+            android:layout_marginTop="2dp"
+            android:text="自动精灵式动作脚本 · 动作最终由虚拟屏执行" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <TextView
             android:id="@+id/scriptDisplayInfo"
+            style="@style/VC.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="当前目标：检查中"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
+            android:text="当前目标：检查中" />
         <EditText
             android:id="@+id/scriptName"
+            style="@style/VC.Edit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="8dp"
             android:hint="脚本名称"
             android:singleLine="true" />
-
         <Button
             android:id="@+id/switchScript"
+            style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="8dp"
             android:text="切换脚本" />
-
         <EditText
             android:id="@+id/scriptRepeatCount"
+            style="@style/VC.Edit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="4dp"
             android:hint="整段脚本循环次数（0=无限）"
             android:inputType="number"
             android:text="1" />
 
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
         <TextView
-            android:layout_width="wrap_content"
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="添加动作"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
+            android:text="添加动作" />
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/addClickAction"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="点击" />
-
-            <Button
-                android:id="@+id/addLongPressAction"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1"
-                android:text="长按" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
+        <Button
+            android:id="@+id/addClickAction"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/addSwipeAction"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="滑动" />
-
-            <Button
-                android:id="@+id/addWaitAction"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1"
-                android:text="等待" />
+            android:layout_weight="1"
+            android:text="点击" />
+        <Button
+            android:id="@+id/addLongPressAction"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="长按" />
+        <Button
+            android:id="@+id/addSwipeAction"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="滑动" />
+        <Button
+            android:id="@+id/addWaitAction"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="等待" />
         </LinearLayout>
-
         <TextView
             android:id="@+id/scriptActionHint"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="当前 MVP 支持：点击、长按、滑动、等待、单动作循环，以及整段脚本循环。"
-            android:textSize="13sp" />
-
+            android:text="支持：点击、长按、滑动、等待、单动作循环，以及整段脚本循环。" />
         <Button
             android:id="@+id/pickScriptCoordinate"
+            style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:text="取点坐标（打开虚拟屏）" />
-
         <TextView
             android:id="@+id/scriptCoordinateStatus"
+            style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
-            android:text="最近坐标：暂无"
-            android:textSize="13sp" />
+            android:layout_marginTop="6dp"
+            android:text="最近坐标：暂无" />
 
+        </LinearLayout>
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="动作列表" />
         <LinearLayout
             android:id="@+id/scriptActionContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="8dp"
             android:orientation="vertical" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
 
-            <Button
-                android:id="@+id/saveScript"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="保存脚本" />
-
-            <Button
-                android:id="@+id/runScript"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1"
-                android:text="运行脚本" />
-
-            <Button
-                android:id="@+id/stopScript"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1"
-                android:text="停止" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/scriptStatus"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="状态：待机"
-            android:textSize="14sp" />
+            android:orientation="horizontal">
+        <Button
+            android:id="@+id/saveScript"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="保存" />
+        <Button
+            android:id="@+id/runScript"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="运行脚本" />
+        <Button
+            android:id="@+id/stopScript"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="停止" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/scriptStatus"
+            style="@style/VC.Body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="状态：待机" />
+
+        </LinearLayout>
+
     </LinearLayout>
 </ScrollView>

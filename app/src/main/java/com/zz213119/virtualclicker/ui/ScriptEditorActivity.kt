@@ -136,7 +136,7 @@ class ScriptEditorActivity : AppCompatActivity() {
     private fun addAction(action: ScriptAction) {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(14), dp(10), dp(14), dp(12))
             setBackgroundResource(R.drawable.bg_script_action)
         }
 
@@ -146,13 +146,17 @@ class ScriptEditorActivity : AppCompatActivity() {
 
         val title = TextView(this).apply {
             text = "动作 " + (rows.size + 1)
-            textSize = 16f
+            textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
+            setTextColor(ContextCompat.getColor(this@ScriptEditorActivity, R.color.vc_text))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val addBefore = Button(this).apply {
+        val addBefore = Button(this, null, 0, R.style.Widget_VC_Button_Tonal).apply {
             text = "前面添加"
+            minHeight = dp(36)
+            minimumHeight = dp(36)
+            textSize = 13f
             setOnClickListener {
                 val row = root.tag as? RowViews ?: return@setOnClickListener
                 addActionBefore(
@@ -167,8 +171,11 @@ class ScriptEditorActivity : AppCompatActivity() {
             }
         }
 
-        val delete = Button(this).apply {
+        val delete = Button(this, null, 0, R.style.Widget_VC_Button_Tonal).apply {
             text = "删除"
+            minHeight = dp(36)
+            minimumHeight = dp(36)
+            textSize = 13f
             setOnClickListener {
                 val row = root.tag as? RowViews ?: return@setOnClickListener
                 actionContainer.removeView(row.root)
@@ -179,7 +186,13 @@ class ScriptEditorActivity : AppCompatActivity() {
 
         header.addView(title)
         header.addView(addBefore)
-        header.addView(delete)
+        header.addView(
+            delete,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(6) }
+        )
         root.addView(header)
 
         val spinner = Spinner(this)
@@ -519,7 +532,7 @@ class ScriptEditorActivity : AppCompatActivity() {
     }
 
     private fun numberField(hint: String, value: Number): EditText =
-        EditText(this).apply {
+        EditText(this, null, 0, R.style.VC_Edit).apply {
             this.hint = hint
             setText(if (value is Float && value == 0f) "" else value.toString())
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -539,7 +552,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         text.toString().trim().toIntOrNull()?.coerceAtLeast(0) ?: 1
 
     private fun integerField(hint: String, value: Int): EditText =
-        EditText(this).apply {
+        EditText(this, null, 0, R.style.VC_Edit).apply {
             this.hint = hint
             setText(value.coerceAtLeast(0).toString())
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -550,7 +563,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         }
 
     private fun longIntegerField(hint: String, value: Long): EditText =
-        EditText(this).apply {
+        EditText(this, null, 0, R.style.VC_Edit).apply {
             this.hint = hint
             setText(value.coerceAtLeast(0L).toString())
             inputType = InputType.TYPE_CLASS_NUMBER
