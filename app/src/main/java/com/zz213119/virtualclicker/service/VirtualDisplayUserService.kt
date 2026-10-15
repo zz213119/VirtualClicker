@@ -316,9 +316,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             appendLog("USER ACTIVITY KEEPALIVE", "started")
             var firstOk = false
             var failLogged = 0
+            var tick = 0
+            val gids = HashMap<Int, Int>()
             while (displays.isNotEmpty()) {
                 try { Thread.sleep(4000) } catch (_: InterruptedException) { break }
+                tick++
                 for (id in displays.keys.toList()) {
+                    // 每约 60 秒记录一次这块屏所在显示组的电源状态（0=睡 1=醒 3=打盹），方便对照息屏时间线
+                    if (tick % 15 == 0) {
+                        val gid = gids.getOrPut(id) { groupIdOf(id) }
+                        appendLog("GROUP WAKEFULNESS", "displayId=$id group=$gid wakefulness=${groupWakefulness(gid)}")
+                    }
                     val ok = PowerHelper.pokeUserActivity(id)
                     if (ok && !firstOk) { firstOk = true; appendLog("USER ACTIVITY KEEPALIVE", "first poke ok displayId=$id") }
                     if (!ok && failLogged < 3) { failLogged++; appendLog("USER ACTIVITY KEEPALIVE", "poke FAILED displayId=$id") }
