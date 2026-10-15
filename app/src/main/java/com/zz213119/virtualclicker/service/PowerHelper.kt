@@ -78,7 +78,7 @@ object PowerHelper {
             val tm = dc.getMethod("getPhysicalDisplayToken", Long::class.javaPrimitiveType)
             (idsM.invoke(null) as? LongArray ?: return emptyList()) to { id: Long -> tm.invoke(null, id) as? IBinder }
         }
-        return ids.mapNotNull { tokenOf(it) }
+        return ids.toList().mapNotNull { tokenOf(it) }
     }
 
     private fun internalToken(): IBinder? {
