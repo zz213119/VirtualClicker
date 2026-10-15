@@ -53,6 +53,8 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     // swap to the ImageReader sink and then restore the preview.
     private val attachedSurfaces = ConcurrentHashMap<Int, android.view.Surface>()
     private val launchedPackages = ConcurrentHashMap<Int, String>()
+    private val launchedActivities = ConcurrentHashMap<Int, String>()
+    private val backgroundSince = ConcurrentHashMap<Int, Long>()
     private val captureLock = Any()
     private val captureThread by lazy { HandlerThread("vc_capture").apply { start() } }
 
@@ -127,6 +129,15 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 "SET SURFACE",
                 "displayId=" + displayId + "\naction=" + action
             )
+            // 记录"进入后台"的时刻；久别回来（>20s）时自动做一次黑屏体检
+            if (surface == null) {
+                backgroundSince.putIfAbsent(displayId, System.currentTimeMillis())
+            } else {
+                val since = backgroundSince.remove(displayId)
+                if (since != null && System.currentTimeMillis() - since > 20_000) {
+                    startResumeCheck(displayId, System.currentTimeMillis() - since)
+                }
+            }
             true
         }.onFailure {
             Log.e(TAG, "setVirtualDisplaySurface failed for displayId=" + displayId, it)
@@ -329,6 +340,54 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         ids.forEach { runCatching { releaseVirtualDisplay(it) } }
     }
 
+    /**
+     * 从后台/息屏回来后检查虚拟屏是不是黑了，并逐级尝试恢复，每一步都写日志：
+     *  1) 1.5s 后取帧算亮度 —— 亮度为 null 表示根本没有出帧，接近 0 表示出帧但全黑
+     *  2) 不正常 → 记录状态 + 唤醒键 + 重新挂 Surface，再检查
+     *  3) 仍不正常 → 用 reorder-to-front 把游戏界面拉回前台（不强杀，不丢会话），再检查
+     */
+    private fun startResumeCheck(displayId: Int, awayMs: Long) {
+        Thread {
+            runCatching {
+                Thread.sleep(1500)
+                val pkg = launchedPackages[displayId] ?: return@runCatching
+                val act = launchedActivities[displayId] ?: ""
+                if (!displays.containsKey(displayId)) return@runCatching
+                var luma = meanLuma(displayId)
+                appendLog("RESUME CHECK", "displayId=$displayId awayMs=$awayMs step=1 luma=$luma")
+                if (luma != null && luma >= 3f) return@runCatching
+
+                dumpActivityDiag(pkg, displayId)
+                wakeDisplay(displayId)
+                runCatching {
+                    val v = displays[displayId]
+                    val sink = sinks[displayId]?.surface
+                    val preview = attachedSurfaces[displayId]
+                    v?.setSurface(null)
+                    v?.setSurface(preview ?: sink)
+                }
+                Thread.sleep(2500)
+                if (!displays.containsKey(displayId)) return@runCatching
+                luma = meanLuma(displayId)
+                appendLog("RESUME CHECK", "displayId=$displayId step=2(wake+reattach) luma=$luma")
+                if (luma != null && luma >= 3f) return@runCatching
+
+                if (act.isNotEmpty()) {
+                    val cmd = arrayOf("am", "start", "--display", displayId.toString(),
+                        "--activity-reorder-to-front", "-n", "$pkg/$act")
+                    val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+                    val out = pr.inputStream.bufferedReader().readText().trim().take(300)
+                    val exit = pr.waitFor()
+                    appendLog("RESUME REORDER", "exit=$exit output=$out")
+                    Thread.sleep(3000)
+                    luma = meanLuma(displayId)
+                    appendLog("RESUME CHECK", "displayId=$displayId step=3(reorder) luma=$luma")
+                }
+                dumpDisplayState(displayId)
+            }.onFailure { appendLog("RESUME CHECK FAILED", it.stackTraceToString().take(500)) }
+        }.start()
+    }
+
     private fun wakeDisplay(displayId: Int) {
         runCatching {
             val pr = ProcessBuilder("input", "-d", displayId.toString(), "keyevent", "KEYCODE_WAKEUP")
@@ -410,6 +469,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // denied warnings); treat an explicit Error: line as failure too.
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
             if (ok) launchedPackages[displayId] = packageName
+            if (ok) launchedActivities[displayId] = activityName
             if (ok) {
                 keepDisplayAwake(displayId)
                 wakeDisplay(displayId)
