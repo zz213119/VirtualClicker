@@ -65,6 +65,10 @@ interface IVirtualDisplayService {
     // previous app process, etc.).
     void releaseAllVirtualDisplays();
 
+    // "熄屏挂机": turn only the physical panel off (system stays awake via a wake lock),
+    // or restore it. Returns true on success.
+    boolean setScreenOffMode(boolean enabled);
+
     // Whether to hold a per-display screen wake lock for launched virtual displays.
     void setKeepDisplayAwake(boolean enabled);
 

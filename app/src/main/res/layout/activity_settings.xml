@@ -222,6 +222,16 @@
             android:text="保持虚拟屏亮屏（息屏后防休眠，实验）"
             android:textColor="@color/vc_text"
             android:textSize="14sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchAutoScreenOff"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:minHeight="44dp"
+            android:text="任务开始时自动熄屏挂机（只关屏幕，不让系统休眠）"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchDebug"
             android:layout_width="match_parent"

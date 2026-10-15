@@ -39,7 +39,7 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(10)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(11)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
@@ -62,6 +62,11 @@ object VirtualDisplayManager {
         val ctx = appContext ?: return
         runCatching { service?.setKeepDisplayAwake(Prefs.keepDisplayAwake(ctx)) }
     }
+
+    fun setScreenOffMode(enabled: Boolean): Boolean =
+        runCatching { service?.setScreenOffMode(enabled) ?: false }
+            .onFailure { Log.e(TAG, "setScreenOffMode failed", it) }
+            .getOrDefault(false)
 
     fun setKeepDisplayAwake(enabled: Boolean) {
         runCatching { service?.setKeepDisplayAwake(enabled) }

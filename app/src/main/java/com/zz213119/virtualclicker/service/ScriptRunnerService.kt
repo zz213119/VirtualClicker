@@ -257,6 +257,10 @@ class ScriptRunnerService : Service() {
                     )
                     return@launch
                 }
+                if (com.zz213119.virtualclicker.core.Prefs.autoScreenOff(applicationContext)) {
+                    val off = VirtualDisplayManager.setScreenOffMode(true)
+                    LogWriter.write("SCREEN OFF", "auto screen-off ok=$off")
+                }
                 val outcome = YihuanShopTask(applicationContext, displayId).run()
                 ok = outcome.ok
                 LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
@@ -269,6 +273,7 @@ class ScriptRunnerService : Service() {
                 AlertNotifier.notify(applicationContext, "异环任务异常", t.message ?: t.javaClass.simpleName)
             } finally {
                 LogWriter.write("TASK END", "task=" + taskId + ";ok=" + ok)
+                runCatching { VirtualDisplayManager.setScreenOffMode(false) }
                 if (generation == runnerGeneration) {
                     releaseWakeLock()
                     isRunning = false

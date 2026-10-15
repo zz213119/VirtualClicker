@@ -384,6 +384,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        findViewById<Button>(R.id.screenOffButton).setOnClickListener {
+            lifecycleScope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    VirtualDisplayManager.ensureBound() && VirtualDisplayManager.setScreenOffMode(true)
+                }
+                Toast.makeText(
+                    this@MainActivity,
+                    if (ok) "屏幕已关闭，系统保持唤醒；任务结束会自动点亮，也可按电源键" else "熄屏失败，请查看日志",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
         findViewById<Button>(R.id.resetBackend).setOnClickListener {
             if (currentDisplayId >= 0) releaseCurrentDisplay()
             virtualDisplayStatus.text = "正在重启虚拟屏后台服务…"

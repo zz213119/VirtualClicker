@@ -201,6 +201,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
             val displayId = vd.display.displayId
             displays[displayId] = vd
+            ensureKeepAlive()
             Log.i(TAG, "created virtual display id=$displayId ${width}x$height@$dpi")
             appendLog(
                 "CREATE DISPLAY SUCCESS",
@@ -303,6 +304,63 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     private val displayWakeLocks = ConcurrentHashMap<Int, android.os.PowerManager.WakeLock>()
+
+    @Volatile
+    private var keepAliveRunning = false
+
+    /** 每 4 秒对所有虚拟屏的显示组"戳"一次用户活动，防止它们因超时睡着（同 MAA-Meow）。 */
+    private fun ensureKeepAlive() {
+        if (keepAliveRunning) return
+        keepAliveRunning = true
+        Thread {
+            appendLog("USER ACTIVITY KEEPALIVE", "started")
+            var firstOk = false
+            var failLogged = 0
+            while (displays.isNotEmpty()) {
+                try { Thread.sleep(4000) } catch (_: InterruptedException) { break }
+                for (id in displays.keys.toList()) {
+                    val ok = PowerHelper.pokeUserActivity(id)
+                    if (ok && !firstOk) { firstOk = true; appendLog("USER ACTIVITY KEEPALIVE", "first poke ok displayId=$id") }
+                    if (!ok && failLogged < 3) { failLogged++; appendLog("USER ACTIVITY KEEPALIVE", "poke FAILED displayId=$id") }
+                }
+            }
+            keepAliveRunning = false
+            appendLog("USER ACTIVITY KEEPALIVE", "stopped")
+        }.apply { name = "vc-user-activity"; isDaemon = true }.start()
+    }
+
+    @Volatile
+    private var screenOffActive = false
+    private var screenOffWakeLock: android.os.PowerManager.WakeLock? = null
+
+    override fun setScreenOffMode(enabled: Boolean): Boolean {
+        return try {
+            if (enabled) {
+                if (screenOffWakeLock?.isHeld != true) {
+                    val pm = createShellContext().getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                    @Suppress("DEPRECATION")
+                    val wl = pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "vc:screenoff")
+                    wl.setReferenceCounted(false)
+                    wl.acquire(12 * 60 * 60 * 1000L)
+                    screenOffWakeLock = wl
+                }
+                val ok = PowerHelper.setPanelPower(false)
+                screenOffActive = ok
+                appendLog("SCREEN OFF MODE", "enabled panelOff=$ok wakeLockHeld=${screenOffWakeLock?.isHeld}")
+                ok
+            } else {
+                val ok = PowerHelper.setPanelPower(true)
+                runCatching { screenOffWakeLock?.takeIf { it.isHeld }?.release() }
+                screenOffWakeLock = null
+                screenOffActive = false
+                appendLog("SCREEN OFF MODE", "disabled panelOn=$ok")
+                ok
+            }
+        } catch (t: Throwable) {
+            appendLog("SCREEN OFF MODE FAILED", t.stackTraceToString().take(500))
+            false
+        }
+    }
 
     @Volatile
     private var keepAwakeEnabled = true
@@ -942,6 +1000,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     override fun destroy() {
+        if (screenOffActive) runCatching { setScreenOffMode(false) }
         val ids = (displays.keys + sinks.keys).toSet()
         ids.forEach { cleanupDisplay(it, "user_service_destroy") }
         displays.clear()
