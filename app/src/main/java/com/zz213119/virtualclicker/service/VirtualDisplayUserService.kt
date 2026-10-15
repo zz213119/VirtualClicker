@@ -340,25 +340,77 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         ids.forEach { runCatching { releaseVirtualDisplay(it) } }
     }
 
+    private fun shellText(vararg cmd: String): String = runCatching {
+        val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+        val t = pr.inputStream.bufferedReader().readText()
+        pr.waitFor()
+        t
+    }.getOrDefault("")
+
+    /** 这块虚拟屏所在的电源显示组 id（从 dumpsys display 里解析），失败返回 1。 */
+    private fun groupIdOf(displayId: Int): Int {
+        val m = Regex("displayId $displayId, displayGroupId (\\d+)").find(shellText("dumpsys", "display"))
+        return m?.groupValues?.get(1)?.toIntOrNull() ?: 1
+    }
+
+    /** 显示组的电源状态：0=ASLEEP 1=AWAKE 2=DREAMING 3=DOZING，读不到返回 -1。 */
+    private fun groupWakefulness(groupId: Int): Int {
+        val text = shellText("dumpsys", "power")
+        val lines = text.lineSequence().toList()
+        val idx = lines.indexOfFirst { it.contains("powerGroupId: $groupId") }
+        if (idx < 0) return -1
+        for (i in idx + 1..minOf(idx + 4, lines.size - 1)) {
+            val m = Regex("current wakefulness: (\\d+)").find(lines[i])
+            if (m != null) return m.groupValues[1].toInt()
+        }
+        return -1
+    }
+
     /**
-     * 从后台/息屏回来后检查虚拟屏是不是黑了，并逐级尝试恢复，每一步都写日志：
-     *  1) 1.5s 后取帧算亮度 —— 亮度为 null 表示根本没有出帧，接近 0 表示出帧但全黑
-     *  2) 不正常 → 记录状态 + 唤醒键 + 重新挂 Surface，再检查
-     *  3) 仍不正常 → 用 reorder-to-front 把游戏界面拉回前台（不强杀，不丢会话），再检查
+     * 用带 ACQUIRE_CAUSES_WAKEUP 的"指定显示器"亮屏唤醒锁，把这块屏所在的显示组从休眠里叫醒。
+     * 只在用户回到前台时调用（此时主屏本来就亮着）。
+     */
+    private fun wakeGroupViaWakeLock(displayId: Int) {
+        runCatching {
+            val pm = createShellContext().getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val m = android.os.PowerManager::class.java.getMethod(
+                "newWakeLock", Int::class.javaPrimitiveType, String::class.java, Int::class.javaPrimitiveType
+            )
+            @Suppress("DEPRECATION")
+            val level = android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP
+            val wl = m.invoke(pm, level, "vc:wakegroup$displayId", displayId) as android.os.PowerManager.WakeLock
+            wl.setReferenceCounted(false)
+            wl.acquire(8_000)
+            appendLog("WAKE GROUP", "displayId=$displayId acquired(with CAUSES_WAKEUP) held=${wl.isHeld}")
+        }.onFailure { appendLog("WAKE GROUP FAILED", "displayId=$displayId ${it.stackTraceToString().take(500)}") }
+    }
+
+    /**
+     * 从后台/息屏回来后：先把虚拟屏所在的显示组叫醒，再检查是不是黑了，并逐级尝试恢复，每一步都写日志：
+     *  0) 带 CAUSES_WAKEUP 的唤醒锁 + 唤醒键，叫醒显示组
+     *  1) 1.5s 后取帧算亮度（null=没出帧，≈0=全黑）并记录显示组状态
+     *  2) 不正常 → 重新挂 Surface，再查
+     *  3) 仍不正常 → 用 reorder-to-front 把游戏界面拉回前台（不强杀），再查
      */
     private fun startResumeCheck(displayId: Int, awayMs: Long) {
         Thread {
             runCatching {
-                Thread.sleep(1500)
                 val pkg = launchedPackages[displayId] ?: return@runCatching
                 val act = launchedActivities[displayId] ?: ""
+                val gid = groupIdOf(displayId)
+                val before = groupWakefulness(gid)
+                wakeGroupViaWakeLock(displayId)
+                wakeDisplay(displayId)
+                Thread.sleep(1500)
                 if (!displays.containsKey(displayId)) return@runCatching
                 var luma = meanLuma(displayId)
-                appendLog("RESUME CHECK", "displayId=$displayId awayMs=$awayMs step=1 luma=$luma")
+                appendLog(
+                    "RESUME CHECK",
+                    "displayId=$displayId awayMs=$awayMs group=$gid wakefulness before=$before after=${groupWakefulness(gid)} step=1 luma=$luma"
+                )
                 if (luma != null && luma >= 3f) return@runCatching
 
                 dumpActivityDiag(pkg, displayId)
-                wakeDisplay(displayId)
                 runCatching {
                     val v = displays[displayId]
                     val sink = sinks[displayId]?.surface
@@ -369,19 +421,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 Thread.sleep(2500)
                 if (!displays.containsKey(displayId)) return@runCatching
                 luma = meanLuma(displayId)
-                appendLog("RESUME CHECK", "displayId=$displayId step=2(wake+reattach) luma=$luma")
+                appendLog("RESUME CHECK", "displayId=$displayId step=2(reattach) wakefulness=${groupWakefulness(gid)} luma=$luma")
                 if (luma != null && luma >= 3f) return@runCatching
 
                 if (act.isNotEmpty()) {
-                    val cmd = arrayOf("am", "start", "--display", displayId.toString(),
-                        "--activity-reorder-to-front", "-n", "$pkg/$act")
-                    val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
-                    val out = pr.inputStream.bufferedReader().readText().trim().take(300)
-                    val exit = pr.waitFor()
-                    appendLog("RESUME REORDER", "exit=$exit output=$out")
+                    val comp = if (act.contains("/")) act else "$pkg/$act"
+                    val out = shellText("am", "start", "--display", displayId.toString(),
+                        "--activity-reorder-to-front", "-n", comp).trim().take(300)
+                    appendLog("RESUME REORDER", "component=$comp output=$out")
                     Thread.sleep(3000)
                     luma = meanLuma(displayId)
-                    appendLog("RESUME CHECK", "displayId=$displayId step=3(reorder) luma=$luma")
+                    appendLog("RESUME CHECK", "displayId=$displayId step=3(reorder) wakefulness=${groupWakefulness(gid)} luma=$luma")
                 }
                 dumpDisplayState(displayId)
             }.onFailure { appendLog("RESUME CHECK FAILED", it.stackTraceToString().take(500)) }
@@ -469,7 +519,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // denied warnings); treat an explicit Error: line as failure too.
             val ok = exit == 0 && !output.contains("Error:", ignoreCase = true)
             if (ok) launchedPackages[displayId] = packageName
-            if (ok) launchedActivities[displayId] = activityName
+            if (ok) {
+                val resolved = Regex("Activity: (\\S+)").find(output)?.groupValues?.get(1)
+                launchedActivities[displayId] = resolved ?: activityName
+            }
             if (ok) {
                 keepDisplayAwake(displayId)
                 wakeDisplay(displayId)
