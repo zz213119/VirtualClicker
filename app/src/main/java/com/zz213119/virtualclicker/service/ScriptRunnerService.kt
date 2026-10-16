@@ -101,6 +101,7 @@ class ScriptRunnerService : Service() {
         }
 
         isRunning = true
+        acquireWakeLock()
         LogWriter.write(
             "SCRIPT START",
             "name=" + script.name + ";displayId=" + displayId +
@@ -112,7 +113,12 @@ class ScriptRunnerService : Service() {
             try {
                 if (!VirtualDisplayManager.ensureBound()) {
                     LogWriter.write("SCRIPT FAILED", "Shizuku UserService bind failed")
+                    AlertNotifier.notify(applicationContext, "脚本无法运行", "后台服务连接失败")
                     return@launch
+                }
+                if (com.zz213119.virtualclicker.core.Prefs.autoScreenOff(applicationContext)) {
+                    val off = VirtualDisplayManager.setScreenOffMode(true)
+                    LogWriter.write("SCREEN OFF", "auto screen-off for script ok=" + off)
                 }
 
                 while (isActive && (script.repeatCount == 0 || rounds < script.repeatCount)) {
@@ -153,6 +159,10 @@ class ScriptRunnerService : Service() {
                                         ";action=" + (index + 1) + ";repeat=" + actionRuns +
                                         ";type=" + action.type
                                 )
+                                AlertNotifier.notify(
+                                    applicationContext, "脚本中断",
+                                    "“" + script.name + "”第 " + (rounds + 1) + " 轮第 " + (index + 1) + " 个动作失败"
+                                )
                                 return@launch
                             }
 
@@ -166,6 +176,10 @@ class ScriptRunnerService : Service() {
                     }
                     rounds++
                 }
+                AlertNotifier.notify(
+                    applicationContext, "脚本已完成",
+                    "“" + script.name + "”已运行 " + rounds + " 轮"
+                )
             } catch (_: CancellationException) {
                 // Normal stop/restart path.
             } catch (t: Throwable) {
@@ -177,7 +191,9 @@ class ScriptRunnerService : Service() {
                     "name=" + script.name + ";rounds=" + rounds +
                         ";repeatCount=" + script.repeatCount
                 )
+                runCatching { VirtualDisplayManager.setScreenOffMode(false) }
                 if (generation == runnerGeneration) {
+                    releaseWakeLock()
                     isRunning = false
                     ScriptRunBus.publish(
                         ScriptRunState(
