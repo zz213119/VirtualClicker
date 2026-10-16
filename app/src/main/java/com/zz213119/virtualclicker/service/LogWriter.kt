@@ -26,7 +26,8 @@ object LogWriter {
             val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
             file.appendText("\n[$time] [$section]\n$body\n", Charsets.UTF_8)
         }.onFailure {
-            Log.e(TAG, "failed to persist log", it)
+            Log.e(TAG, "failed to persist log, forwarding to backend", it)
+            com.zz213119.virtualclicker.core.VirtualDisplayManager.appendLogRemote(section, body)
         }
     }
 }

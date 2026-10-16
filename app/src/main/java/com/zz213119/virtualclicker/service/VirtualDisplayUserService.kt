@@ -337,6 +337,50 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }.apply { name = "vc-user-activity"; isDaemon = true }.start()
     }
 
+    private fun logsDir() = File("/storage/emulated/0/Android/data/", "$APP_PACKAGE/files/logs")
+    private fun shotsDir() = File("/storage/emulated/0/Android/data/", "$APP_PACKAGE/files/shots")
+
+    override fun appendLogLine(section: String, body: String) = appendLog(section, body)
+
+    override fun listLogs(): Array<String> =
+        logsDir().listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".log") }
+            ?.map { it.name }?.sorted()?.toTypedArray()
+            ?: emptyArray()
+
+    override fun readLog(name: String, offset: Long, maxLen: Int): ByteArray {
+        if (!Regex("virtualclicker-\\d{4}-\\d{2}-\\d{2}\\.log").matches(name)) return ByteArray(0)
+        val f = File(logsDir(), name)
+        if (!f.isFile) return ByteArray(0)
+        return runCatching {
+            java.io.RandomAccessFile(f, "r").use { raf ->
+                val len = raf.length()
+                if (offset >= len) return@use ByteArray(0)
+                raf.seek(offset)
+                val n = minOf(maxLen.toLong(), len - offset, 512 * 1024L).toInt()
+                ByteArray(n).also { raf.readFully(it) }
+            }
+        }.getOrDefault(ByteArray(0))
+    }
+
+    override fun clearLogs(): Int {
+        var n = 0
+        for (d in listOf(logsDir(), shotsDir())) {
+            d.listFiles()?.forEach { if (it.isFile && it.delete()) n++ }
+        }
+        return n
+    }
+
+    override fun saveShot(name: String, data: ByteArray): Boolean {
+        if (!Regex("[A-Za-z0-9_.-]+\\.jpg").matches(name)) return false
+        return runCatching {
+            val d = shotsDir()
+            if (!d.exists()) d.mkdirs()
+            File(d, name).writeBytes(data)
+            true
+        }.getOrDefault(false)
+    }
+
     override fun stopLaunchedApp(displayId: Int): Boolean {
         val pkg = launchedPackages.remove(displayId)
         if (pkg == null) {

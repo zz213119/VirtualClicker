@@ -65,6 +65,14 @@ interface IVirtualDisplayService {
     // previous app process, etc.).
     void releaseAllVirtualDisplays();
 
+    // Log/screenshot access through the backend process: the app itself cannot
+    // read or write the log directory (it is created by the shell/root uid).
+    void appendLogLine(String section, String body);
+    String[] listLogs();
+    byte[] readLog(String name, long offset, int maxLen);
+    int clearLogs();
+    boolean saveShot(String name, in byte[] data);
+
     // Force-stops the app that was launched onto this virtual display (keeps the display).
     boolean stopLaunchedApp(int displayId);
 

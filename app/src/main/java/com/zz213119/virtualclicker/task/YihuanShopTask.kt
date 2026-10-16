@@ -104,10 +104,10 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
     private fun shot(bmp: Bitmap?, tag: String, force: Boolean = false) {
         if (bmp == null || (!force && loops > 1)) return
         runCatching {
-            val dir = File(SHOT_DIR).apply { mkdirs() }
-            File(dir, "yihuan-$stamp-L$loops-$tag.jpg").outputStream().use {
-                bmp.compress(Bitmap.CompressFormat.JPEG, 90, it)
-            }
+            val baos = java.io.ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+            val ok = VirtualDisplayManager.saveShot("yihuan-$stamp-L$loops-$tag.jpg", baos.toByteArray())
+            if (!ok) log("shot not saved tag=$tag")
         }.onFailure { log("shot failed tag=$tag: ${it.message}") }
     }
 

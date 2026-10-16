@@ -173,32 +173,65 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun shareLatestLog() {
-        val file = File(baseDir, "logs").listFiles()?.filter { it.isFile }?.maxByOrNull { it.lastModified() }
-        if (file == null) {
-            Toast.makeText(this, "还没有日志文件", Toast.LENGTH_SHORT).show()
-            return
+    private suspend fun exportLatestLog(): File? {
+        val out = File(cacheDir, "share").apply { mkdirs() }
+        // 1) 通过后台服务读取（应用自己没有日志目录的读写权限）
+        if (VirtualDisplayManager.ensureBound()) {
+            val name = VirtualDisplayManager.listLogs().lastOrNull()
+            if (name != null) {
+                val f = File(out, name)
+                f.outputStream().use { os ->
+                    var off = 0L
+                    while (true) {
+                        val chunk = VirtualDisplayManager.readLog(name, off, 256 * 1024) ?: break
+                        if (chunk.isEmpty()) break
+                        os.write(chunk)
+                        off += chunk.size
+                    }
+                }
+                if (f.length() > 0) return f
+            }
         }
-        runCatching {
-            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-            val send = Intent(Intent.ACTION_SEND)
-                .setType("text/plain")
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            startActivity(Intent.createChooser(send, "分享日志 ${file.name}"))
-        }.onFailure {
-            logStatus.text = "分享失败：${it.message}"
+        // 2) 兜底：直接读文件
+        val local = File(baseDir, "logs").listFiles()?.filter { it.isFile }?.maxByOrNull { it.lastModified() }
+            ?: return null
+        return runCatching { local.copyTo(File(out, local.name), overwrite = true) }.getOrNull()
+    }
+
+    private fun shareLatestLog() {
+        logStatus.text = "正在读取日志…"
+        lifecycleScope.launch {
+            val file = withContext(Dispatchers.IO) { runCatching { exportLatestLog() }.getOrNull() }
+            if (file == null) {
+                logStatus.text = "没有读到日志：请先在主页点“连接后端”（后台服务需要已连接）"
+                return@launch
+            }
+            runCatching {
+                val uri = FileProvider.getUriForFile(this@SettingsActivity, "$packageName.fileprovider", file)
+                val send = Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                startActivity(Intent.createChooser(send, "分享日志 ${file.name}"))
+                logStatus.text = "已读取 ${file.name}（${file.length() / 1024} KB）"
+            }.onFailure { logStatus.text = "分享失败：${it.message}" }
         }
     }
 
     private fun clearLogs() {
-        var ok = 0
-        var failed = 0
-        for (sub in listOf("logs", "shots")) {
-            File(baseDir, sub).listFiles()?.forEach { f ->
-                if (f.isFile) { if (f.delete()) ok++ else failed++ }
+        logStatus.text = "正在清理…"
+        lifecycleScope.launch {
+            val n = withContext(Dispatchers.IO) {
+                if (VirtualDisplayManager.ensureBound()) VirtualDisplayManager.clearLogsRemote()
+                else {
+                    var c = 0
+                    for (sub in listOf("logs", "shots")) {
+                        File(baseDir, sub).listFiles()?.forEach { f -> if (f.isFile && f.delete()) c++ }
+                    }
+                    c
+                }
             }
+            logStatus.text = "已清理 $n 个文件"
         }
-        logStatus.text = "已清理 $ok 个文件" + if (failed > 0) "，$failed 个无法删除（可能属于其他用户）" else ""
     }
 }
