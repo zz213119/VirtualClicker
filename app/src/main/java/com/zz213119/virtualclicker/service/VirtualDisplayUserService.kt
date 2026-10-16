@@ -566,6 +566,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 "am", "start",
                 "--display", displayId.toString(),
                 "--activity-multiple-task",
+                "--activity-exclude-from-recents",
                 "-W",
                 "-n", component
             )
