@@ -265,6 +265,11 @@ class ScriptRunnerService : Service() {
                 ok = outcome.ok
                 LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
                 AlertNotifier.notify(applicationContext, outcome.title, outcome.text)
+                if (outcome.ok && com.zz213119.virtualclicker.core.Prefs.autoQuitGame(applicationContext)) {
+                    kotlinx.coroutines.delay(1500)
+                    val stopped = VirtualDisplayManager.stopLaunchedApp(displayId)
+                    LogWriter.write("AUTO QUIT GAME", "stopped=" + stopped)
+                }
             } catch (_: CancellationException) {
                 // Normal stop/restart path.
             } catch (t: Throwable) {

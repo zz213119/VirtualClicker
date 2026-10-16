@@ -65,6 +65,9 @@ interface IVirtualDisplayService {
     // previous app process, etc.).
     void releaseAllVirtualDisplays();
 
+    // Force-stops the app that was launched onto this virtual display (keeps the display).
+    boolean stopLaunchedApp(int displayId);
+
     // "熄屏挂机": turn only the physical panel off (system stays awake via a wake lock),
     // or restore it. Returns true on success.
     boolean setScreenOffMode(boolean enabled);

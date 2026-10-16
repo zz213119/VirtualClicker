@@ -79,6 +79,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // ---- 开关 ----
+        bindSwitch(R.id.switchAutoQuit, "auto_quit_game", Prefs.autoQuitGame(this))
         bindSwitch(R.id.switchNotify, "notify", Prefs.notifyEnabled(this))
         bindSwitch(R.id.switchCpuLock, "cpu_wakelock", Prefs.cpuWakeLock(this))
         bindSwitch(R.id.switchKeepAwake, "keep_display_awake", Prefs.keepDisplayAwake(this)) {

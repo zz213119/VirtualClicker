@@ -337,6 +337,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }.apply { name = "vc-user-activity"; isDaemon = true }.start()
     }
 
+    override fun stopLaunchedApp(displayId: Int): Boolean {
+        val pkg = launchedPackages.remove(displayId)
+        if (pkg == null) {
+            appendLog("STOP APP", "no launched package on displayId=$displayId")
+            return false
+        }
+        val out = shellText("am", "force-stop", pkg).trim()
+        appendLog("STOP APP", "displayId=$displayId pkg=$pkg output=$out")
+        return true
+    }
+
     @Volatile
     private var screenOffActive = false
     private var screenOffWakeLock: android.os.PowerManager.WakeLock? = null

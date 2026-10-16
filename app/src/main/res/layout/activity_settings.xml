@@ -151,6 +151,16 @@
             android:hint="0"
             android:inputType="number"
             android:singleLine="true" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchAutoQuit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:minHeight="44dp"
+            android:text="任务正常完成后自动退出游戏"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
         <Button
             android:id="@+id/saveParams"
             style="@style/Widget.VC.Button.Filled"
