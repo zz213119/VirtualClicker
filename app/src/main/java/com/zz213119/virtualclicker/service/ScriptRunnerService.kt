@@ -70,6 +70,7 @@ class ScriptRunnerService : Service() {
             ACTION_RUN_TASK -> {
                 val displayId = intent.getIntExtra(EXTRA_DISPLAY_ID, -1)
                 val taskId = intent.getStringExtra(EXTRA_TASK_ID).orEmpty()
+                yihuanStatus = null
                 startForeground(NOTIFICATION_ID, buildNotification(displayId, taskId))
                 startTask(displayId, taskId, startId)
             }
@@ -277,7 +278,9 @@ class ScriptRunnerService : Service() {
                     val off = VirtualDisplayManager.setScreenOffMode(true)
                     LogWriter.write("SCREEN OFF", "auto screen-off ok=$off")
                 }
-                val outcome = YihuanShopTask(applicationContext, displayId).run()
+                val outcome = YihuanShopTask(applicationContext, displayId) { text ->
+                    updateYihuanStatus(text, displayId)
+                }.run()
                 ok = outcome.ok
                 LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
                 AlertNotifier.notify(applicationContext, outcome.title, outcome.text)
@@ -355,6 +358,17 @@ class ScriptRunnerService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
+    @Volatile
+    private var yihuanStatus: String? = null
+
+    private fun updateYihuanStatus(text: String, displayId: Int) {
+        yihuanStatus = text
+        runCatching {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, buildNotification(displayId, TASK_YIHUAN_SHOP))
+        }
+    }
+
     private fun buildNotification(displayId: Int, scriptName: String): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -380,9 +394,11 @@ class ScriptRunnerService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val isYihuan = scriptName == TASK_YIHUAN_SHOP
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("VirtualClicker 脚本运行中")
-            .setContentText(scriptName + " · D#" + displayId)
+            .setContentTitle(if (isYihuan) "异环自动刷运行中" else "VirtualClicker 脚本运行中")
+            .setContentText(if (isYihuan) (yihuanStatus ?: "启动中…") else scriptName + " · D#" + displayId)
+            .setOnlyAlertOnce(true)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(openApp)
             .addAction(android.R.drawable.ic_media_pause, "停止", stopIntent)

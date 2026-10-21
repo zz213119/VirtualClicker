@@ -26,7 +26,11 @@ import java.util.Locale
  * 坐标/区域都是相对虚拟屏的归一化比例，来自你的截图；识别靠 assets/yihuan 下的参考图
  * 做"固定位置画面比对"，没有 OpenCV。每一步都写日志，失败时存截图。
  */
-class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
+class YihuanShopTask(
+    private val ctx: Context,
+    private val displayId: Int,
+    private val onStatus: (String) -> Unit = {}
+) {
 
     data class Outcome(val ok: Boolean, val title: String, val text: String)
 
@@ -75,6 +79,11 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
     private val hammerPeriodMs = com.zz213119.virtualclicker.core.Prefs.hammerPeriodMs(ctx)
     private val maxLoops = com.zz213119.virtualclicker.core.Prefs.maxLoops(ctx)
     private val staminaStop = com.zz213119.virtualclicker.core.Prefs.staminaStop(ctx)
+
+    private var lastStamina: Stamina? = null
+
+    private fun statusText(): String =
+        (lastStamina?.let { "体力 ${it.cur}/${it.max} · " } ?: "") + "已完成 $done 轮"
 
     private var w = 1920
     private var h = 1080
@@ -226,6 +235,8 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             log("list at top=$top")
             val st = readStamina()
             log("stamina=$st")
+            if (st != null) lastStamina = st
+            onStatus(statusText())
             if (st != null && st.cur <= staminaStop) return exhausted(st, "体力已读到 ${st.cur}（停止阈值 $staminaStop）。")
 
             // 3. 选中 1-1
@@ -334,6 +345,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             if (!back) return fail("领取后没有回到店长特供页面")
 
             done++
+            onStatus(statusText())
             log("loop done total=$done in ${(now() - tLoop) / 1000}s")
             delay(800)
         }
