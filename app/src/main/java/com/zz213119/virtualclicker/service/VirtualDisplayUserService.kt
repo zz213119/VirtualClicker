@@ -714,7 +714,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             val preview = attachedSurfaces[displayId]?.takeIf { it.isValid }
             var switched = false
             try {
-                val latch = CountDownLatch(1)
+                var latch = CountDownLatch(1)
                 reader.setOnImageAvailableListener(
                     { latch.countDown() },
                     Handler(captureThread.looper)
@@ -735,10 +735,31 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     vd.setSurface(reader.surface)
                 }
                 var image: android.media.Image? = null
-                if (latch.await(2000, TimeUnit.MILLISECONDS)) {
-                    image = reader.acquireLatestImage()
+                var blankRetries = 0
+                for (attempt in 1..3) {
+                    if (attempt > 1) {
+                        // 上一帧是全黑的（切换 Surface 后的第一帧常见）：丢掉，重新踢一次拿新帧
+                        latch = CountDownLatch(1)
+                        while (true) {
+                            val o = reader.acquireLatestImage() ?: break
+                            o.close()
+                        }
+                        runCatching { vd.setSurface(null); vd.setSurface(reader.surface) }
+                    }
+                    var img: android.media.Image? = null
+                    if (latch.await(2000, TimeUnit.MILLISECONDS)) img = reader.acquireLatestImage()
+                    if (img == null) img = reader.acquireLatestImage()
+                    if (img == null) break
+                    if (!planeIsBlank(img) || attempt == 3) { image = img; break }
+                    blankRetries++
+                    img.close()
                 }
-                if (image == null) image = reader.acquireLatestImage()
+                if (blankRetries > 0) {
+                    blankLogCount++
+                    if (blankLogCount <= 5 || blankLogCount % 50 == 0) {
+                        appendLog("CAPTURE BLANK RETRY", "displayId=$displayId retries=$blankRetries gotImage=${image != null} total=$blankLogCount")
+                    }
+                }
                 if (image == null) {
                     appendLog("CAPTURE FAILED", "displayId=$displayId\nreason=no_image_timeout switched=$switched")
                     val nowMs = System.currentTimeMillis()
@@ -772,6 +793,33 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             }
         }
         return null
+    }
+
+    @Volatile
+    private var blankLogCount = 0
+
+    /** 抽样判断一帧是不是全黑（平均亮度 < 2）。 */
+    private fun planeIsBlank(image: android.media.Image): Boolean {
+        val plane = image.planes[0]
+        val buf = plane.buffer
+        val rowStride = plane.rowStride
+        val pixelStride = plane.pixelStride
+        var sum = 0L
+        var n = 0
+        var y = 0
+        while (y < image.height) {
+            var x = 0
+            while (x < image.width) {
+                val o = y * rowStride + x * pixelStride
+                if (o + 2 < buf.limit()) {
+                    sum += (buf.get(o).toInt() and 0xFF) + (buf.get(o + 1).toInt() and 0xFF) + (buf.get(o + 2).toInt() and 0xFF)
+                    n += 3
+                }
+                x += 40
+            }
+            y += 40
+        }
+        return n == 0 || sum.toDouble() / n < 2.0
     }
 
     private fun imageToJpeg(image: android.media.Image, maxWidth: Int): ByteArray {

@@ -113,12 +113,16 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
 
     private fun now() = SystemClock.elapsedRealtime()
 
+    /** 整帧平均亮度几乎为 0，认为是取帧时拿到的空白帧（不是真画面）。 */
+    private fun isBlank(bmp: Bitmap): Boolean =
+        FrameOps.boxGrid(bmp, 0f, 0f, 1f, 1f, 8, 4).average() < 2.0
+
     private suspend fun grab(maxW: Int = 960): Bitmap? {
-        repeat(3) {
+        repeat(4) {
             val bytes = VirtualDisplayManager.captureFrame(displayId, maxW)
             val bmp = bytes?.let { FrameOps.decode(it) }
-            if (bmp != null) { last = bmp; return bmp }
-            delay(300)
+            if (bmp != null && !isBlank(bmp)) { last = bmp; return bmp }
+            delay(250)
         }
         return null
     }
@@ -157,7 +161,7 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
         repeat(5) {
             val bytes = VirtualDisplayManager.captureFrame(displayId, 1440)
             val bmp = bytes?.let { FrameOps.decode(it) }
-            if (bmp != null) {
+            if (bmp != null && !isBlank(bmp)) {
                 val (raw, st) = runCatching {
                     StaminaOcr.read(bmp, STAMINA_RECT[0], STAMINA_RECT[1], STAMINA_RECT[2], STAMINA_RECT[3])
                 }.getOrElse { "ERR ${it.message}" to null }
@@ -228,11 +232,17 @@ class YihuanShopTask(private val ctx: Context, private val displayId: Int) {
             var selected = false
             for (i in 1..3) {
                 log("tap 1-1 try=$i ok=${tap(ITEM11_X, ITEM11_Y)}")
-                delay(900)
-                val fr = grab() ?: continue
-                val pf = FrameOps.purpleFrac(fr, ITEM11_RECT[0], ITEM11_RECT[1], ITEM11_RECT[2], ITEM11_RECT[3])
-                log("purple=$pf")
-                if (pf >= PURPLE_MIN) { selected = true; shot(fr, "01-selected"); break }
+                delay(700)
+                // 点完后连看几帧，避免界面动画/空白帧造成误判
+                for (k in 1..3) {
+                    val fr = grab()
+                    if (fr == null) { delay(400); continue }
+                    val pf = FrameOps.purpleFrac(fr, ITEM11_RECT[0], ITEM11_RECT[1], ITEM11_RECT[2], ITEM11_RECT[3])
+                    log("purple=$pf (try=$i frame=$k)")
+                    if (pf >= PURPLE_MIN) { selected = true; shot(fr, "01-selected"); break }
+                    delay(500)
+                }
+                if (selected) break
             }
             if (!selected) return fail("未能选中 1-1（列表位置可能不对）")
 
