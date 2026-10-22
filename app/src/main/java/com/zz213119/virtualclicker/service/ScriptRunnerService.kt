@@ -112,11 +112,16 @@ class ScriptRunnerService : Service() {
 
         scriptJob = serviceScope.launch {
             var rounds = 0
+            var heartbeatJob: kotlinx.coroutines.Job? = null
             try {
                 if (!VirtualDisplayManager.ensureBound()) {
                     LogWriter.write("SCRIPT FAILED", "Shizuku UserService bind failed")
                     AlertNotifier.notify(applicationContext, "脚本无法运行", "后台服务连接失败")
                     return@launch
+                }
+                VirtualDisplayManager.setBusy(true)
+                heartbeatJob = launch {
+                    while (true) { delay(30_000); VirtualDisplayManager.heartbeat() }
                 }
                 if (com.zz213119.virtualclicker.core.Prefs.autoScreenOff(applicationContext)) {
                     val off = VirtualDisplayManager.setScreenOffMode(true)
@@ -193,7 +198,9 @@ class ScriptRunnerService : Service() {
                     "name=" + script.name + ";rounds=" + rounds +
                         ";repeatCount=" + script.repeatCount
                 )
+                heartbeatJob?.cancel()
                 runCatching { VirtualDisplayManager.setScreenOffMode(false) }
+                runCatching { VirtualDisplayManager.setBusy(false) }
                 if (generation == runnerGeneration) {
                     releaseWakeLock()
                     isRunning = false
@@ -261,11 +268,16 @@ class ScriptRunnerService : Service() {
         LogWriter.write("TASK START", "task=" + taskId + ";displayId=" + displayId)
         scriptJob = serviceScope.launch {
             var ok = false
+            var heartbeatJob: kotlinx.coroutines.Job? = null
             try {
                 if (!VirtualDisplayManager.ensureBound()) {
                     LogWriter.write("TASK FAILED", "Shizuku UserService bind failed")
                     AlertNotifier.notify(applicationContext, "任务无法运行", "后台服务连接失败")
                     return@launch
+                }
+                VirtualDisplayManager.setBusy(true)
+                heartbeatJob = launch {
+                    while (true) { delay(30_000); VirtualDisplayManager.heartbeat() }
                 }
                 if (taskId == TASK_ONE_CLICK) {
                     val oc = com.zz213119.virtualclicker.task.OneClickTask(applicationContext) { text ->
@@ -308,7 +320,9 @@ class ScriptRunnerService : Service() {
                 AlertNotifier.notify(applicationContext, "异环任务异常", t.message ?: t.javaClass.simpleName)
             } finally {
                 LogWriter.write("TASK END", "task=" + taskId + ";ok=" + ok)
+                heartbeatJob?.cancel()
                 runCatching { VirtualDisplayManager.setScreenOffMode(false) }
+                runCatching { VirtualDisplayManager.setBusy(false) }
                 if (generation == runnerGeneration) {
                     releaseWakeLock()
                     isRunning = false

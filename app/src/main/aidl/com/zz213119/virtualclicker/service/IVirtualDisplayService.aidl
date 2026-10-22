@@ -73,6 +73,12 @@ interface IVirtualDisplayService {
     int clearLogs();
     boolean saveShot(String name, in byte[] data);
 
+    // Power hygiene: the app marks the service busy while a task/script runs and sends a
+    // heartbeat; when idle (no task, no preview) the backend auto-closes its displays.
+    void setBusy(boolean busy);
+    void heartbeat();
+    void setIdleCloseMinutes(int minutes);
+
     // Force-stops the app that was launched onto this virtual display (keeps the display).
     boolean stopLaunchedApp(int displayId);
 

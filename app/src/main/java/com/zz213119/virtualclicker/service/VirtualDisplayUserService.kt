@@ -130,9 +130,11 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 "displayId=" + displayId + "\naction=" + action
             )
             // 记录"进入后台"的时刻；久别回来（>20s）时自动做一次黑屏体检
+            lastActivity = System.currentTimeMillis()
             if (surface == null) {
                 backgroundSince.putIfAbsent(displayId, System.currentTimeMillis())
             } else {
+                if (displays.isNotEmpty()) ensureKeepAlive()
                 val since = backgroundSince.remove(displayId)
                 if (since != null && System.currentTimeMillis() - since > 20_000) {
                     startResumeCheck(displayId, System.currentTimeMillis() - since)
@@ -201,7 +203,9 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
             val displayId = vd.display.displayId
             displays[displayId] = vd
-            ensureKeepAlive()
+            lastActivity = System.currentTimeMillis()
+            ensureWatchdog()
+            if (keepAliveWanted()) ensureKeepAlive()
             Log.i(TAG, "created virtual display id=$displayId ${width}x$height@$dpi")
             appendLog(
                 "CREATE DISPLAY SUCCESS",
@@ -305,6 +309,72 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     private val displayWakeLocks = ConcurrentHashMap<Int, android.os.PowerManager.WakeLock>()
 
+    @Volatile private var busy = false
+    @Volatile private var lastHeartbeat = 0L
+    @Volatile private var lastActivity = System.currentTimeMillis()
+    @Volatile private var idleCloseMs = 10 * 60_000L
+    @Volatile private var watchdogRunning = false
+    private var screenOffSince = 0L
+
+    private fun previewAttached() = attachedSurfaces.values.any { it.isValid }
+    private fun keepAliveWanted() = busy || previewAttached()
+
+    override fun setBusy(busy: Boolean) {
+        this.busy = busy
+        lastActivity = System.currentTimeMillis()
+        if (busy) {
+            lastHeartbeat = lastActivity
+            displays.keys.forEach { keepDisplayAwake(it) }
+            if (displays.isNotEmpty()) ensureKeepAlive()
+            ensureWatchdog()
+        } else {
+            displayWakeLocks.keys.toList().forEach { releaseDisplayWakeLock(it) }
+            if (screenOffActive) runCatching { setScreenOffMode(false) }
+        }
+        appendLog("BUSY", "busy=$busy")
+    }
+
+    override fun heartbeat() {
+        lastHeartbeat = System.currentTimeMillis()
+    }
+
+    override fun setIdleCloseMinutes(minutes: Int) {
+        idleCloseMs = if (minutes <= 0) 0L else minutes * 60_000L
+        appendLog("OPTION", "idleCloseMinutes=$minutes")
+    }
+
+    /** 守护线程：任务心跳丢失就收尾；空闲超时就自动关掉虚拟屏，避免整晚空转耗电。 */
+    private fun ensureWatchdog() {
+        if (watchdogRunning) return
+        watchdogRunning = true
+        Thread {
+            appendLog("WATCHDOG", "started")
+            while (displays.isNotEmpty() || busy) {
+                try { Thread.sleep(20_000) } catch (_: InterruptedException) { break }
+                val now = System.currentTimeMillis()
+                if (busy && now - lastHeartbeat > 120_000) {
+                    appendLog("WATCHDOG", "heartbeat lost -> busy=false")
+                    setBusy(false)
+                }
+                if (screenOffActive) {
+                    if (screenOffSince == 0L) screenOffSince = now
+                    if (!busy && now - screenOffSince > 30 * 60_000L) {
+                        appendLog("WATCHDOG", "screen-off mode without task for 30 min -> restore panel")
+                        runCatching { setScreenOffMode(false) }
+                    }
+                } else screenOffSince = 0L
+                if (!busy && idleCloseMs > 0 && displays.isNotEmpty() && !previewAttached() &&
+                    now - lastActivity > idleCloseMs
+                ) {
+                    appendLog("IDLE AUTO CLOSE", "no task and no preview for ${(now - lastActivity) / 60000} min -> releasing all displays")
+                    releaseAllVirtualDisplays()
+                }
+            }
+            watchdogRunning = false
+            appendLog("WATCHDOG", "stopped")
+        }.apply { name = "vc-watchdog"; isDaemon = true }.start()
+    }
+
     @Volatile
     private var keepAliveRunning = false
 
@@ -318,7 +388,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             var failLogged = 0
             var tick = 0
             val gids = HashMap<Int, Int>()
-            while (displays.isNotEmpty()) {
+            while (displays.isNotEmpty() && keepAliveWanted()) {
                 try { Thread.sleep(4000) } catch (_: InterruptedException) { break }
                 tick++
                 for (id in displays.keys.toList()) {
@@ -435,7 +505,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     /** 尝试给这块虚拟屏所在的显示组加一个"亮屏"唤醒锁（隐藏接口 newWakeLock(level,tag,displayId)）。 */
     private fun keepDisplayAwake(displayId: Int) {
-        if (!keepAwakeEnabled) return
+        if (!keepAwakeEnabled || !busy) return
         if (displayWakeLocks[displayId]?.isHeld == true) return
         runCatching {
             val pm = createShellContext().getSystemService(Context.POWER_SERVICE) as android.os.PowerManager

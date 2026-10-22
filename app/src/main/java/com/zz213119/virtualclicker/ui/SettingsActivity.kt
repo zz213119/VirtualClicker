@@ -63,6 +63,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.hammerPeriod).setText(Prefs.hammerPeriodMs(this).toString())
         findViewById<EditText>(R.id.maxLoops).setText(Prefs.maxLoops(this).toString())
         findViewById<EditText>(R.id.staminaStop).setText(Prefs.staminaStop(this).toString())
+        findViewById<EditText>(R.id.idleCloseMin).setText(Prefs.idleCloseMinutes(this).toString())
         findViewById<Button>(R.id.saveParams).setOnClickListener {
             val hammer = findViewById<EditText>(R.id.hammerPeriod).text.toString().toLongOrNull()
             val loops = findViewById<EditText>(R.id.maxLoops).text.toString().toIntOrNull()
@@ -72,6 +73,10 @@ class SettingsActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             Prefs.saveTaskParams(this, hammer, loops, stamina)
+            val idle = findViewById<EditText>(R.id.idleCloseMin).text.toString().toIntOrNull() ?: 10
+            Prefs.setIdleCloseMinutes(this, idle)
+            VirtualDisplayManager.setIdleCloseMinutes(Prefs.idleCloseMinutes(this))
+            findViewById<EditText>(R.id.idleCloseMin).setText(Prefs.idleCloseMinutes(this).toString())
             findViewById<EditText>(R.id.hammerPeriod).setText(Prefs.hammerPeriodMs(this).toString())
             findViewById<EditText>(R.id.maxLoops).setText(Prefs.maxLoops(this).toString())
             findViewById<EditText>(R.id.staminaStop).setText(Prefs.staminaStop(this).toString())

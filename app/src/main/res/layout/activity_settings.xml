@@ -151,6 +151,22 @@
             android:hint="0"
             android:inputType="number"
             android:singleLine="true" />
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="空闲多少分钟后自动关闭虚拟屏（0=不自动关闭；无任务且预览不在前台时计时，省电）" />
+
+        <EditText
+            android:id="@+id/idleCloseMin"
+            style="@style/VC.Edit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="10"
+            android:inputType="number"
+            android:singleLine="true" />
+
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchAutoQuit"
             android:layout_width="match_parent"
