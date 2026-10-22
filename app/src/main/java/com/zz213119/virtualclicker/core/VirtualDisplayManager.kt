@@ -45,6 +45,9 @@ object VirtualDisplayManager {
     val isBound: Boolean get() = service != null
 
     @Volatile
+    var oneClickDisplayId: Int = -1
+
+    @Volatile
     private var appContext: Context? = null
 
     /** 当前这条连接是用哪种模式建的（重置时要按它来拆）。 */

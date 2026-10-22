@@ -42,6 +42,7 @@ class ScriptRunnerService : Service() {
         const val ACTION_RUN_TASK = "com.zz213119.virtualclicker.action.RUN_TASK"
         const val EXTRA_TASK_ID = "extra_task_id"
         const val TASK_YIHUAN_SHOP = "yihuan_shop_special"
+        const val TASK_ONE_CLICK = "one_click_login"
         const val EXTRA_DISPLAY_ID = "extra_script_display_id"
         const val EXTRA_SCRIPT_JSON = "extra_script_json"
         private const val CHANNEL_ID = "virtual_clicker_script"
@@ -247,7 +248,7 @@ class ScriptRunnerService : Service() {
         scriptJob?.cancel()
         val generation = ++runnerGeneration
 
-        if (displayId < 0 || taskId != TASK_YIHUAN_SHOP) {
+        if (!((taskId == TASK_YIHUAN_SHOP && displayId >= 0) || taskId == TASK_ONE_CLICK)) {
             Log.w(TAG, "task rejected: displayId=" + displayId + " taskId=" + taskId)
             isRunning = false
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -263,6 +264,16 @@ class ScriptRunnerService : Service() {
             try {
                 if (!VirtualDisplayManager.ensureBound()) {
                     LogWriter.write("TASK FAILED", "Shizuku UserService bind failed")
+                    AlertNotifier.notify(applicationContext, "任务无法运行", "后台服务连接失败")
+                    return@launch
+                }
+                if (taskId == TASK_ONE_CLICK) {
+                    val oc = com.zz213119.virtualclicker.task.OneClickTask(applicationContext) { text ->
+                        updateTaskStatus(text, taskId, displayId)
+                    }.run()
+                    ok = oc.ok
+                    LogWriter.write("TASK OUTCOME", "ok=" + oc.ok + ";" + oc.title + ";" + oc.text)
+                    AlertNotifier.notify(applicationContext, oc.title, oc.text)
                     return@launch
                 }
                 val size = VirtualDisplayManager.displaySize(displayId)
@@ -279,7 +290,7 @@ class ScriptRunnerService : Service() {
                     LogWriter.write("SCREEN OFF", "auto screen-off ok=$off")
                 }
                 val outcome = YihuanShopTask(applicationContext, displayId) { text ->
-                    updateYihuanStatus(text, displayId)
+                    updateTaskStatus(text, taskId, displayId)
                 }.run()
                 ok = outcome.ok
                 LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
@@ -361,11 +372,11 @@ class ScriptRunnerService : Service() {
     @Volatile
     private var yihuanStatus: String? = null
 
-    private fun updateYihuanStatus(text: String, displayId: Int) {
+    private fun updateTaskStatus(text: String, taskId: String, displayId: Int) {
         yihuanStatus = text
         runCatching {
             getSystemService(NotificationManager::class.java)
-                .notify(NOTIFICATION_ID, buildNotification(displayId, TASK_YIHUAN_SHOP))
+                .notify(NOTIFICATION_ID, buildNotification(displayId, taskId))
         }
     }
 
@@ -394,9 +405,15 @@ class ScriptRunnerService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val isYihuan = scriptName == TASK_YIHUAN_SHOP
+        val isYihuan = scriptName == TASK_YIHUAN_SHOP || scriptName == TASK_ONE_CLICK
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(if (isYihuan) "异环自动刷运行中" else "VirtualClicker 脚本运行中")
+            .setContentTitle(
+                when (scriptName) {
+                    TASK_ONE_CLICK -> "一键开刷运行中"
+                    TASK_YIHUAN_SHOP -> "异环自动刷运行中"
+                    else -> "VirtualClicker 脚本运行中"
+                }
+            )
             .setContentText(if (isYihuan) (yihuanStatus ?: "启动中…") else scriptName + " · D#" + displayId)
             .setOnlyAlertOnce(true)
             .setSmallIcon(android.R.drawable.ic_media_play)

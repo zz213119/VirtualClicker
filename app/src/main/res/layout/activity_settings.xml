@@ -317,6 +317,36 @@
             style="@style/VC.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:text="实验功能" />
+
+        <TextView
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="一键开刷：新建 720p 虚拟屏 → 启动异环云游戏 → 点击登录 → 开始游戏 → 选择“使用移动流量”（若弹出）→ 排队时耐心等待 → 等待加载 → 进入游戏 → 等待加载。目前只做到进入游戏，后续步骤陆续加入。运行进度看通知栏。" />
+
+        <Button
+            android:id="@+id/oneClickButton"
+            style="@style/Widget.VC.Button.Filled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="一键开刷（实验）" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+        <TextView
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:text="关于" />
         <TextView
             android:id="@+id/versionText"

@@ -407,6 +407,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.runYihuanShopTask).setOnClickListener {
+            val effectiveDisplayId = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
             ) {
@@ -423,16 +424,16 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请允许\"不受电池优化限制\"，息屏/后台才能持续运行；允许后再点一次按钮", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            if (currentDisplayId < 0) {
+            if (effectiveDisplayId < 0) {
                 Toast.makeText(this, "请先启动虚拟屏，并让异环停在店内能看到\"店长特供\"的画面", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             com.zz213119.virtualclicker.service.LogWriter.write(
-                "YIHUAN BUTTON", "clicked displayId=" + currentDisplayId + " build=" + BuildConfig.VERSION_NAME
+                "YIHUAN BUTTON", "clicked displayId=" + effectiveDisplayId + " build=" + BuildConfig.VERSION_NAME
             )
             val taskIntent = Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
                 .setAction(com.zz213119.virtualclicker.service.ScriptRunnerService.ACTION_RUN_TASK)
-                .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, currentDisplayId)
+                .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, effectiveDisplayId)
                 .putExtra(
                     com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_TASK_ID,
                     com.zz213119.virtualclicker.service.ScriptRunnerService.TASK_YIHUAN_SHOP
