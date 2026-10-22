@@ -89,6 +89,152 @@ class OneClickTask(
         return VirtualDisplayManager.longPress(displayId, x, y, 60)
     }
 
+    private fun asset(name: String): Bitmap =
+        ctx.assets.open("yihuan/$name").use { android.graphics.BitmapFactory.decodeStream(it) }
+
+    private suspend fun look(): Pair<Bitmap, List<GameOcr.Line>>? {
+        val f = grab() ?: return null
+        val lines = runCatching { GameOcr.read(f) }.getOrElse {
+            log("ocr error: ${it.message}")
+            emptyList()
+        }
+        return f to lines
+    }
+
+    private fun logOcr(tag: String, lines: List<GameOcr.Line>) =
+        log("$tag ocr: " + lines.take(12).joinToString(" | ") { it.text.take(24) })
+
+    /**
+     * 第二段：进入游戏后 → 点左上角"都市大亨"房子 → 都市闲趣 → 店长特供 → 地图上点红色传送点 → 传送。
+     * 图标没有文字，靠 IconFinder 找；有文字的都用 OCR 点文字本身。
+     */
+    private suspend fun navigateToShop(): YihuanShopTask.Outcome {
+        val houseT = asset("house_icon.png")
+        val markerT = asset("marker_ring.png")
+        val roiHouse = floatArrayOf(0f, 0f, 0.42f, 0.30f)
+        val roiMarker = floatArrayOf(0.30f, 0.30f, 0.66f, 0.70f)
+
+        // ---- A. 点左上角房子，等待"都市大亨"界面 ----
+        onStatus("打开都市大亨…")
+        val tA = now()
+        var houseTaps = 0
+        while (true) {
+            if (now() - tA > 120_000) return fail("没有找到左上角“都市大亨”图标，或点击后没有打开（可能被弹窗挡住）")
+            val lk = look()
+            if (lk == null) { delay(1500); continue }
+            val (f, lines) = lk
+            val text = lines.joinToString(" ") { it.text }
+            if (text.contains("甜梦等级") || text.contains("都市大亨")) { log("A: city tycoon screen"); shot(f, "nav-tycoon"); break }
+            val m = IconFinder.find(f, houseT, IconFinder.Mode.WHITE, roiHouse)
+            log("A: house icon match=" + (m?.let { "%.2f/%.2f at (%.3f,%.3f)".format(it.score, it.second, it.nx, it.ny) } ?: "none"))
+            if (m != null && m.score >= 0.55f && houseTaps < 8) {
+                if (houseTaps == 0) shot(f, "nav-hud")
+                houseTaps++
+                tap(m.nx, m.ny)
+                delay(3000)
+            } else {
+                if (houseTaps == 0 && now() - tA > 20_000) logOcr("A", lines)
+                delay(1500)
+            }
+        }
+
+        // ---- B. 点"都市闲趣"，等待菜单 ----
+        onStatus("选择都市闲趣…")
+        val tB = now()
+        var lastTapB = 0L
+        var triesB = 0
+        while (true) {
+            if (now() - tB > 90_000) return fail("没有进入“都市闲趣”菜单")
+            delay(1000)
+            val lk = look() ?: continue
+            val (f, lines) = lk
+            val text = lines.joinToString(" ") { it.text }
+            if (text.contains("店长特供")) { log("B: menu opened"); shot(f, "nav-menu"); break }
+            if (now() - lastTapB > 4500) {
+                val line = lines.firstOrNull { it.text.contains("都市闲趣") && !it.text.contains("MENU") }
+                if (line != null) { log("B: tap 都市闲趣 by ocr (${line.cx},${line.cy})"); tap(line.cx, line.cy) }
+                else { triesB++; log("B: ocr miss, fallback tap #$triesB"); logOcr("B", lines); tap(0.53f, 0.414f) }
+                lastTapB = now()
+            }
+        }
+
+        // ---- C. 点"店长特供"，等待地图 ----
+        onStatus("选择店长特供…")
+        val tC = now()
+        var lastTapC = 0L
+        while (true) {
+            if (now() - tC > 120_000) return fail("点击“店长特供”后没有进入地图")
+            delay(1000)
+            val lk = look() ?: continue
+            val (f, lines) = lk
+            val text = lines.joinToString(" ") { it.text }
+            if (text.contains("追踪") || text.contains("卷叶榕") || text.contains("商铺") || text.contains("传送")) {
+                log("C: map opened"); shot(f, "nav-map"); break
+            }
+            if (now() - lastTapC > 5000) {
+                val line = lines.firstOrNull { it.text.contains("店长特供") }
+                if (line != null) { log("C: tap 店长特供 by ocr (${line.cx},${line.cy})"); tap(line.cx, line.cy) }
+                else { log("C: ocr miss, fallback tap"); logOcr("C", lines); tap(0.827f, 0.506f) }
+                lastTapC = now()
+            }
+        }
+
+        // ---- D. 地图：点红色传送点，确认出现"维特海默塔"面板，再点"传送" ----
+        onStatus("点击传送点…")
+        val tD = now()
+        var markerTaps = 0
+        var teleportTapped = false
+        while (!teleportTapped) {
+            if (now() - tD > 120_000 || markerTaps > 8) return fail("没能在地图上选中传送点并点到“传送”")
+            delay(1000)
+            val lk = look() ?: continue
+            val (f, lines) = lk
+            val text = lines.joinToString(" ") { it.text }
+            val go = lines.firstOrNull { it.text.trim() == "传送" || (it.text.contains("传送") && it.text.length <= 4) }
+            if (go != null && (text.contains("维特海默塔") || text.contains("异象委托"))) {
+                shot(f, "nav-teleport")
+                log("D: tap 传送 (${go.cx},${go.cy})")
+                tap(go.cx, go.cy)
+                teleportTapped = true
+                break
+            }
+            val m = IconFinder.find(f, markerT, IconFinder.Mode.RED, roiMarker)
+            log("D: marker match=" + (m?.let { "%.2f/%.2f at (%.3f,%.3f)".format(it.score, it.second, it.nx, it.ny) } ?: "none"))
+            if (m != null && m.score >= 0.28f && m.score >= m.second * 2f) {
+                markerTaps++
+                tap(m.nx, m.ny)
+                delay(1500)
+            } else if (now() - tD > 15_000) {
+                // 匹配不上：退回到"以画面中心为基准的固定偏移"
+                markerTaps++
+                logOcr("D", lines)
+                tap(0.459f, 0.510f)
+                delay(1500)
+            }
+        }
+
+        // ---- E. 等传送完成：连续几帧都不再是地图界面 ----
+        onStatus("传送中…")
+        val tE = now()
+        var nonMap = 0
+        while (true) {
+            if (now() - tE > 150_000) return fail("点了“传送”后长时间没有离开地图")
+            delay(1500)
+            val lk = look() ?: continue
+            val (f, lines) = lk
+            val text = lines.joinToString(" ") { it.text }
+            val isMap = text.contains("追踪") || text.contains("卷叶榕") || text.contains("传送") ||
+                text.contains("维特海默塔") || text.contains("异象委托")
+            if (isMap) nonMap = 0 else nonMap++
+            if (nonMap >= 3) {
+                shot(f, "nav-arrived")
+                log("E: teleport finished")
+                onStatus("已传送到维特海默塔")
+                return YihuanShopTask.Outcome(true, "一键开刷：已传送", "虚拟屏 #$displayId，已点击传送到维特海默塔，后续移动步骤待添加。")
+            }
+        }
+    }
+
     suspend fun run(): YihuanShopTask.Outcome {
         onStatus("连接后台服务…")
         if (!VirtualDisplayManager.ensureBound()) return fail("后台服务连接失败（检查启动模式和授权）")
@@ -172,8 +318,8 @@ class OneClickTask(
                 hud || (enterTapped && sawPercentAfterEnter && noPercent >= 3 && !loadingText) -> {
                     shot(f, "done")
                     log("DONE hud=$hud")
-                    onStatus("已进入游戏")
-                    return YihuanShopTask.Outcome(true, "一键开刷：已进入游戏", "虚拟屏 #$displayId，已进入游戏世界，可继续下一步。")
+                    onStatus("已进入游戏，前往店长特供…")
+                    return navigateToShop()
                 }
                 enter != null -> {
                     lastProgress = now()

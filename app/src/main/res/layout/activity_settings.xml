@@ -324,7 +324,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="一键开刷：新建 720p 虚拟屏 → 启动异环云游戏 → 点击登录 → 开始游戏 → 选择“使用移动流量”（若弹出）→ 排队时耐心等待 → 等待加载 → 进入游戏 → 等待加载。目前只做到进入游戏，后续步骤陆续加入。运行进度看通知栏。" />
+            android:text="一键开刷：新建 720p 虚拟屏 → 启动异环云游戏 → 点击登录 → 开始游戏 → 选择“使用移动流量”（若弹出）→ 排队时耐心等待 → 等待加载 → 进入游戏 → 等待加载 → 点左上角都市大亨 → 都市闲趣 → 店长特供 → 地图上点红色传送点 → 传送。目前做到传送，后续的移动步骤陆续加入。运行进度看通知栏。" />
 
         <Button
             android:id="@+id/oneClickButton"
