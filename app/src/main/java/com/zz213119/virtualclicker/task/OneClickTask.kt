@@ -124,6 +124,12 @@ class OneClickTask(
             if (lk == null) { delay(1500); continue }
             val (f, lines) = lk
             val text = lines.joinToString(" ") { it.text }
+            if (text.contains("每日登录奖励") || text.contains("点击空白区域")) {
+                log("A: daily reward popup, tap blank")
+                tap(0.12f, 0.45f)
+                delay(2500)
+                continue
+            }
             if (text.contains("甜梦等级") || text.contains("都市大亨")) { log("A: city tycoon screen"); shot(f, "nav-tycoon"); break }
             val m = IconFinder.find(f, houseT, IconFinder.Mode.WHITE, roiHouse)
             log("A: house icon match=" + (m?.let { "%.2f/%.2f at (%.3f,%.3f)".format(it.score, it.second, it.nx, it.ny) } ?: "none"))
@@ -258,6 +264,7 @@ class OneClickTask(
         var tapStart = 0
         var tapNet = 0
         var tapEnter = 0
+        var tapDaily = 0
         var lastProgress = now()
         var queueSince = -1L
         var lastKey = ""
@@ -288,6 +295,7 @@ class OneClickTask(
             val start = lines.firstOrNull { it.text.contains("开始游戏") }
             val login = lines.firstOrNull { it.text.contains("任意位置") || it.text.contains("点击任意") }
             val hud = joined.contains("猎人等级")
+            val daily = joined.contains("每日登录奖励") || joined.contains("点击空白区域")
             val percentMatch = PERCENT.find(joined)
             val loadingText = joined.contains("游戏启动中") || joined.contains("请耐心等待")
 
@@ -313,6 +321,16 @@ class OneClickTask(
                     onStatus("选择使用移动流量…")
                     log("tap net (${net.cx},${net.cy}) #$tapNet")
                     tap(net.cx, net.cy)
+                    delay(2500)
+                }
+                daily -> {
+                    // 每天第一次打开游戏会弹出"每日登录奖励"，点空白区域关掉；没弹出就不会走到这里
+                    lastProgress = now()
+                    if (++tapDaily > 10) return fail("“每日登录奖励”弹窗点不掉")
+                    if (seen.add("daily")) shot(f, "daily")
+                    onStatus("关闭每日登录奖励…")
+                    log("tap blank to dismiss daily reward #$tapDaily")
+                    tap(0.12f, 0.45f)
                     delay(2500)
                 }
                 hud || (enterTapped && sawPercentAfterEnter && noPercent >= 3 && !loadingText) -> {
