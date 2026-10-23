@@ -84,22 +84,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // ---- 开关 ----
-        findViewById<Button>(R.id.oneClickButton).setOnClickListener {
-            if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1001)
-            }
-            val i = Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
-                .setAction(com.zz213119.virtualclicker.service.ScriptRunnerService.ACTION_RUN_TASK)
-                .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, -1)
-                .putExtra(
-                    com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_TASK_ID,
-                    com.zz213119.virtualclicker.service.ScriptRunnerService.TASK_ONE_CLICK
-                )
-            androidx.core.content.ContextCompat.startForegroundService(this, i)
-            Toast.makeText(this, "一键开刷已开始，进度见通知栏", Toast.LENGTH_LONG).show()
-        }
+        bindSwitch(R.id.switchOneClick, "one_click_mode", Prefs.oneClickMode(this))
         bindSwitch(R.id.switchAutoQuit, "auto_quit_game", Prefs.autoQuitGame(this))
         bindSwitch(R.id.switchNotify, "notify", Prefs.notifyEnabled(this))
         bindSwitch(R.id.switchCpuLock, "cpu_wakelock", Prefs.cpuWakeLock(this))

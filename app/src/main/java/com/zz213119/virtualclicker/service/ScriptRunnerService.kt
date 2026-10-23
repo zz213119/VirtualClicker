@@ -43,6 +43,10 @@ class ScriptRunnerService : Service() {
         const val EXTRA_TASK_ID = "extra_task_id"
         const val TASK_YIHUAN_SHOP = "yihuan_shop_special"
         const val TASK_ONE_CLICK = "one_click_login"
+
+        /** 当前正在跑的任务 id（异环 1-1 / 一键开刷），没有则为 null，主页用它切换按钮状态。 */
+        @Volatile
+        var activeTaskId: String? = null
         const val EXTRA_DISPLAY_ID = "extra_script_display_id"
         const val EXTRA_SCRIPT_JSON = "extra_script_json"
         private const val CHANNEL_ID = "virtual_clicker_script"
@@ -265,6 +269,7 @@ class ScriptRunnerService : Service() {
 
         isRunning = true
         acquireWakeLock()
+        activeTaskId = taskId
         LogWriter.write("TASK START", "task=" + taskId + ";displayId=" + displayId)
         scriptJob = serviceScope.launch {
             var ok = false
@@ -320,6 +325,7 @@ class ScriptRunnerService : Service() {
                 AlertNotifier.notify(applicationContext, "异环任务异常", t.message ?: t.javaClass.simpleName)
             } finally {
                 LogWriter.write("TASK END", "task=" + taskId + ";ok=" + ok)
+                if (generation == runnerGeneration) activeTaskId = null
                 heartbeatJob?.cancel()
                 runCatching { VirtualDisplayManager.setScreenOffMode(false) }
                 runCatching { VirtualDisplayManager.setBusy(false) }
@@ -373,6 +379,7 @@ class ScriptRunnerService : Service() {
     }
 
     private fun stopRunner() {
+        activeTaskId = null
         releaseWakeLock()
         scriptJob?.cancel()
         scriptJob = null

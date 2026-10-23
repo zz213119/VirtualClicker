@@ -33,6 +33,7 @@ object Prefs {
     fun keepDisplayAwake(c: Context) = sp(c).getBoolean("keep_display_awake", true)
     fun idleCloseMinutes(c: Context): Int = sp(c).getInt("idle_close_min", 10).coerceIn(0, 720)
     fun setIdleCloseMinutes(c: Context, m: Int) = sp(c).edit().putInt("idle_close_min", m.coerceIn(0, 720)).apply()
+    fun oneClickMode(c: Context) = sp(c).getBoolean("one_click_mode", false)
     fun autoQuitGame(c: Context) = sp(c).getBoolean("auto_quit_game", false)
     fun autoScreenOff(c: Context) = sp(c).getBoolean("auto_screen_off", false)
     fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", true)

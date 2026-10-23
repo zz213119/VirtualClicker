@@ -407,7 +407,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.runYihuanShopTask).setOnClickListener {
-            val effectiveDisplayId = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
+            val svc = com.zz213119.virtualclicker.service.ScriptRunnerService
+            val active = svc.activeTaskId
+            if (active == svc.TASK_YIHUAN_SHOP || active == svc.TASK_ONE_CLICK) {
+                startService(
+                    Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
+                        .setAction(svc.ACTION_STOP)
+                )
+                Toast.makeText(this, "已发送停止", Toast.LENGTH_SHORT).show()
+                refreshYihuanCard()
+                return@setOnClickListener
+            }
+            val experimental = Prefs.oneClickMode(this)
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
             ) {
@@ -424,22 +435,24 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请允许\"不受电池优化限制\"，息屏/后台才能持续运行；允许后再点一次按钮", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            if (effectiveDisplayId < 0) {
+            val effectiveDisplayId = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
+            if (!experimental && effectiveDisplayId < 0) {
                 Toast.makeText(this, "请先启动虚拟屏，并让异环停在店内能看到\"店长特供\"的画面", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             com.zz213119.virtualclicker.service.LogWriter.write(
-                "YIHUAN BUTTON", "clicked displayId=" + effectiveDisplayId + " build=" + BuildConfig.VERSION_NAME
+                "YIHUAN BUTTON",
+                "clicked experimental=" + experimental + " displayId=" + effectiveDisplayId + " build=" + BuildConfig.VERSION_NAME
             )
             val taskIntent = Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
-                .setAction(com.zz213119.virtualclicker.service.ScriptRunnerService.ACTION_RUN_TASK)
-                .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, effectiveDisplayId)
-                .putExtra(
-                    com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_TASK_ID,
-                    com.zz213119.virtualclicker.service.ScriptRunnerService.TASK_YIHUAN_SHOP
-                )
+                .setAction(svc.ACTION_RUN_TASK)
+                .putExtra(svc.EXTRA_DISPLAY_ID, if (experimental) -1 else effectiveDisplayId)
+                .putExtra(svc.EXTRA_TASK_ID, if (experimental) svc.TASK_ONE_CLICK else svc.TASK_YIHUAN_SHOP)
             androidx.core.content.ContextCompat.startForegroundService(this, taskIntent)
-            virtualDisplayStatus.text = "异环任务已启动：结果见日志与 files/shots 截图"
+            virtualDisplayStatus.text =
+                if (experimental) "一键开刷（实验）已启动：进度见通知栏，虚拟屏创建后会显示在上面的预览里"
+                else "异环任务已启动：结果见日志与 files/shots 截图"
+            refreshYihuanCard()
         }
 
         findViewById<Button>(R.id.closeVirtualDisplay).setOnClickListener {
@@ -1232,11 +1245,84 @@ class MainActivity : AppCompatActivity() {
         controller.unbind()
         super.onDestroy()
     }
+    private var uiPollJob: kotlinx.coroutines.Job? = null
+
     override fun onResume() {
         super.onResume()
         findViewById<android.view.View>(R.id.debugCard).visibility =
             if (Prefs.showDebugTools(this)) android.view.View.VISIBLE else android.view.View.GONE
         refreshStatus()
+        refreshYihuanCard()
+        uiPollJob?.cancel()
+        uiPollJob = lifecycleScope.launch {
+            while (true) {
+                refreshYihuanCard()
+                adoptOneClickDisplay()
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
+    override fun onPause() {
+        uiPollJob?.cancel()
+        uiPollJob = null
+        super.onPause()
+    }
+
+    private fun styleButton(b: Button, filled: Boolean) {
+        b.setBackgroundResource(if (filled) R.drawable.bg_btn_filled else R.drawable.bg_btn_tonal)
+        b.setTextColor(getColor(if (filled) R.color.vc_on_primary else R.color.vc_on_tonal))
+    }
+
+    /** 异环卡片：普通 / 实验模式的标题说明，以及"开始 ↔ 关闭"按钮状态。 */
+    private fun refreshYihuanCard() {
+        val svc = com.zz213119.virtualclicker.service.ScriptRunnerService
+        val experimental = Prefs.oneClickMode(this)
+        val active = svc.activeTaskId
+        val running = active == svc.TASK_YIHUAN_SHOP || active == svc.TASK_ONE_CLICK
+        findViewById<TextView>(R.id.yihuanTitle).text =
+            if (experimental) "异环 · 店长特供 1-1（实验）" else "异环 · 店长特供 1-1"
+        findViewById<TextView>(R.id.yihuanHelp).text =
+            if (experimental) "实验：从启动游戏开始一键完成 —— 登录 → 开始游戏 → 进入游戏 → 都市大亨 → 店长特供 → 传送。目前做到传送，后续移动步骤陆续加入；点“关闭”可随时停止。"
+            else "循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在上面启动虚拟屏。点“关闭”可随时停止。"
+        val btn = findViewById<Button>(R.id.runYihuanShopTask)
+        if (running) {
+            btn.text = "关闭"
+            styleButton(btn, false)
+        } else {
+            btn.text = if (experimental) "一键开刷" else "开始自动刷"
+            styleButton(btn, true)
+        }
+    }
+
+    /** 让主页预览接管后台（一键开刷）创建的虚拟屏；虚拟屏被关闭/自动关闭后复位。 */
+    private fun adoptOneClickDisplay() {
+        val dm = getSystemService(DisplayManager::class.java) ?: return
+        if (currentDisplayId >= 0 && dm.getDisplay(currentDisplayId) == null) {
+            currentDisplayId = -1
+            setPreviewRunning(false)
+        }
+        val id = VirtualDisplayManager.oneClickDisplayId
+        if (id >= 0 && dm.getDisplay(id) == null) {
+            VirtualDisplayManager.oneClickDisplayId = -1
+            return
+        }
+        if (currentDisplayId < 0 && id >= 0) {
+            val surface = previewSurface
+            if (surface?.isValid != true) return
+            displayWidth = 1280
+            displayHeight = 720
+            displayDpi = 240
+            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            previewContainer.setAspectRatio(displayWidth, displayHeight)
+            updateResolutionInfo()
+            currentDisplayId = id
+            setPreviewRunning(true)
+            virtualDisplayStatus.text = "已接管一键开刷的虚拟屏 #$id（预览中）"
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { VirtualDisplayManager.setDisplaySurface(id, surface) }
+            }
+        }
     }
 
     private fun refreshStatus() {
