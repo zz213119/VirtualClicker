@@ -34,6 +34,10 @@ object Prefs {
     fun idleCloseMinutes(c: Context): Int = sp(c).getInt("idle_close_min", 10).coerceIn(0, 720)
     fun setIdleCloseMinutes(c: Context, m: Int) = sp(c).edit().putInt("idle_close_min", m.coerceIn(0, 720)).apply()
     fun oneClickMode(c: Context) = sp(c).getBoolean("one_click_mode", false)
+    /** 一键开刷用哪个游戏：false = 云异环（默认），true = 本地「异环」（没有登录/排队，但仍要加载） */
+    fun oneClickNative(c: Context) = sp(c).getBoolean("one_click_native", false)
+    fun oneClickPackage(c: Context): String =
+        if (oneClickNative(c)) "com.hottagames.yh.laohu" else "com.pwrd.cloud.yh.laohu"
     fun autoQuitGame(c: Context) = sp(c).getBoolean("auto_quit_game", false)
     fun autoScreenOff(c: Context) = sp(c).getBoolean("auto_screen_off", false)
     fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", true)

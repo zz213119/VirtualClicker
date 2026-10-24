@@ -85,6 +85,10 @@ class SettingsActivity : AppCompatActivity() {
 
         // ---- 开关 ----
         bindSwitch(R.id.switchOneClick, "one_click_mode", Prefs.oneClickMode(this))
+        findViewById<SwitchCompat>(R.id.switchNativeGame).text = nativeGameLabel(Prefs.oneClickNative(this))
+        bindSwitch(R.id.switchNativeGame, "one_click_native", Prefs.oneClickNative(this)) {
+            findViewById<SwitchCompat>(R.id.switchNativeGame).text = nativeGameLabel(it)
+        }
         bindSwitch(R.id.switchAutoQuit, "auto_quit_game", Prefs.autoQuitGame(this))
         bindSwitch(R.id.switchNotify, "notify", Prefs.notifyEnabled(this))
         bindSwitch(R.id.switchCpuLock, "cpu_wakelock", Prefs.cpuWakeLock(this))
@@ -138,6 +142,9 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         refreshBattery()
     }
+
+    private fun nativeGameLabel(native: Boolean) =
+        if (native) "游戏版本：异环（本地版，无登录/排队）—— 关闭则切回云异环" else "游戏版本：云异环（默认）—— 开启则切换为异环"
 
     private fun bindSwitch(id: Int, key: String, initial: Boolean, onChange: ((Boolean) -> Unit)? = null) {
         findViewById<SwitchCompat>(id).apply {

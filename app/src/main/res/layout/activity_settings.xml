@@ -340,7 +340,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="一键开刷：新建 720p 虚拟屏 → 启动异环云游戏 → 点击登录 → 开始游戏 → 选择“使用移动流量”（若弹出）→ 排队时耐心等待 → 等待加载 → 进入游戏 → 等待加载 → 点左上角都市大亨 → 都市闲趣 → 店长特供 → 地图上点红色传送点 → 传送。目前做到传送，后续的移动步骤陆续加入。在主页点“一键开刷”开始，再点“关闭”即可停止，进度看通知栏。" />
+            android:text="一键开刷：新建 720p 虚拟屏 → 启动游戏 → （云异环才有：点击登录 → 开始游戏 → 选择“使用移动流量” → 排队耐心等待）→ 进入游戏 → 等待加载 → 点左上角都市大亨 → 都市闲趣 → 店长特供 → 地图上点红色传送点 → 传送 → 走进 ORIGEN 咖啡店 → 自动刷 1-1。在主页点“一键开刷”开始，再点“关闭”即可停止，进度看通知栏。" />
 
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchOneClick"
@@ -349,6 +349,16 @@
             android:layout_marginTop="12dp"
             android:minHeight="44dp"
             android:text="一键开刷（实验）：开启后，主页“异环 · 店长特供 1-1”变为一键流程"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchNativeGame"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:minHeight="44dp"
+            android:text="游戏版本：云异环（默认）"
             android:textColor="@color/vc_text"
             android:textSize="14sp" />
         </LinearLayout>

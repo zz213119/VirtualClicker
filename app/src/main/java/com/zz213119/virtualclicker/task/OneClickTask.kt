@@ -682,8 +682,11 @@ class OneClickTask(
         VirtualDisplayManager.displaySize(displayId)?.let { if (it.size >= 2) { w = it[0]; h = it[1] } }
         log("display created id=$displayId size=${w}x$h")
 
-        onStatus("启动游戏…")
-        if (!VirtualDisplayManager.launch(PKG, displayId)) return fail("启动游戏失败")
+        val pkg = com.zz213119.virtualclicker.core.Prefs.oneClickPackage(ctx)
+        val native = com.zz213119.virtualclicker.core.Prefs.oneClickNative(ctx)
+        log("game=" + (if (native) "异环(本地)" else "云异环") + " pkg=$pkg")
+        onStatus(if (native) "启动异环…" else "启动云异环…")
+        if (!VirtualDisplayManager.launch(pkg, displayId)) return fail("启动游戏失败（$pkg 没装或无法启动？）")
         delay(2500)
 
         var enterTapped = false
