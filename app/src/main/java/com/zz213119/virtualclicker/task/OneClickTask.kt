@@ -54,7 +54,9 @@ class OneClickTask(
         private const val CAM_MIN_X = 0.50f
         private const val CAM_MAX_X = 0.82f
         private const val WALK_TIMEOUT_MS = 150_000L
-        private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE")
+        private const val MAX_WALKS = 18          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
+        private val SWEEP_SEQ = floatArrayOf(0.2f, 0.2f, 0.2f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f)   // 找店招时的转镜头顺序：先向右扫，再回头向左
+        private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE|CAFE")
         private const val SPAWN_SIGN_X = 0.642f   // 传送落地后店招大约在画面横向 0.64 处（量自截图，只在 OCR 读不出时当作初值）
     }
 
@@ -69,7 +71,7 @@ class OneClickTask(
     private fun now() = SystemClock.elapsedRealtime()
 
     private fun shot(bmp: Bitmap?, tag: String) {
-        if (bmp == null || shots >= 20) return
+        if (bmp == null || shots >= 40) return
         shots++
         runCatching {
             val baos = ByteArrayOutputStream()
@@ -394,18 +396,20 @@ class OneClickTask(
         delay(4000)   // 传送后的加载画面
 
         val t0 = now()
-        var gain = -1.0f            // 拖动 1 个屏宽 → 画面内容横向移动多少（拖右=内容左移，所以初值为负）；每次转镜头后用画面平移实测校准
+        var gain = -1.0f            // 拖动 1 个屏宽 → 画面内容横向移动多少（拖右=内容左移，所以初值为负）；每次转镜头后用前后两次 OCR 的店招位置校准
         var pos = -1f               // 店招在画面里的横向位置估计（OCR 读到就用 OCR，否则用初值+转镜头预测）
         var posFromOcr = false
         var everOcr = false
         var adjusts = 0
         var walks = 0
-        var lostWalks = 0
+        var lostCount = 0           // 连续几轮没读到店招（读到过之后才计）
         var sweeping = false
         var sweepSteps = 0
         var insideSteps = 0
-        var shotSign = false
+        var shotNoSign = false
         var shotInside = false
+        var pendingCx = -1f         // 刚做完转镜头、还没走路时，转之前 OCR 读到的店招位置，用来校准 gain
+        var pendingDx = 0f
         val insidePattern = arrayOf(
             floatArrayOf(0f, -1f, 900f),
             floatArrayOf(0.7f, -0.7f, 800f),
@@ -415,16 +419,12 @@ class OneClickTask(
             floatArrayOf(1f, 0f, 600f)
         )
 
-        /** 拖一次镜头，返回实测的画面平移（null=测不出）；顺便校准 gain。 */
+        /** 拖一次镜头，返回实测的画面平移（null=测不出，仅供日志参考）。 */
         suspend fun turn(before: Bitmap, dx: Float): Float? {
             dragCamera(dx)
             val after = grab() ?: return null
             val s = FrameOps.shiftX(before, after)
             log("W: drag dx=%.3f measured shift=%s gain=%.2f".format(dx, s?.let { "%.3f".format(it) } ?: "n/a", gain))
-            if (s != null && kotlin.math.abs(dx) >= 0.03f) {
-                val g = s / dx
-                if (kotlin.math.abs(g) in 0.2f..3.5f) gain = 0.5f * gain + 0.5f * g
-            }
             return s
         }
 
@@ -446,6 +446,8 @@ class OneClickTask(
 
             val inside = text.contains("库存") && text.contains("收入")
             val sign = if (inside) null else ocrSign(f, lines)
+            log("W: look walks=$walks inside=$inside sign=" + (sign?.let { "(%.3f,%.3f)".format(it.cx, it.cy) } ?: "none") +
+                " pos=%.3f lost=$lostCount".format(pos))
 
             // ---- 店内：没看到选项，按一组方向小步试探柜台 ----
             if (inside && sign == null) {
@@ -460,11 +462,17 @@ class OneClickTask(
             }
 
             if (sign != null) {
-                if (!everOcr) { log("W: sign read by OCR at (${sign.cx},${sign.cy}) text=${sign.text}"); shot(f, "walk-sign") }
+                if (!everOcr) { log("W: sign first read by OCR text=${sign.text}"); shot(f, "walk-sign") }
+                // 用转镜头前后两次读数校准 gain
+                if (pendingCx >= 0f && kotlin.math.abs(pendingDx) >= 0.05f) {
+                    val g = (sign.cx - pendingCx) / pendingDx
+                    if (kotlin.math.abs(g) in 0.3f..3.0f) { gain = 0.5f * gain + 0.5f * g; log("W: gain calibrated=%.2f (measured %.2f)".format(gain, g)) }
+                }
+                pendingCx = -1f
                 everOcr = true
                 posFromOcr = true
                 pos = sign.cx
-                lostWalks = 0
+                lostCount = 0
                 sweeping = false
                 sweepSteps = 0
             } else if (pos < 0f) {
@@ -472,23 +480,26 @@ class OneClickTask(
                 pos = SPAWN_SIGN_X
                 posFromOcr = false
                 log("W: sign not readable, assume spawn position cx=$pos")
-                if (!shotSign) { shotSign = true; shot(f, "walk-nosign") }
-            } else if (posFromOcr) {
-                lostWalks++   // 之前读到过，现在被挡/出画面：保持朝向继续走
+                if (!shotNoSign) { shotNoSign = true; shot(f, "walk-nosign") }
+            } else if (everOcr) {
+                lostCount++
             }
+            pendingCx = if (sign != null) sign.cx else -1f
 
-            // ---- 一直读不到店招，而且已经走了几段：落地朝向可能和预设不同，转一圈用 OCR 找 ----
-            if (!everOcr && walks >= 3 && !sweeping) {
+            // ---- 找不到店招：从没读到过且已走了几段 / 读到过但连续丢了几轮 → 转镜头扫一遍用 OCR 找 ----
+            if (!sweeping && ((!everOcr && walks >= 3) || (everOcr && lostCount >= 3))) {
                 sweeping = true
                 sweepSteps = 0
-                log("W: still no OCR hit after $walks walks, sweep camera to look for the sign")
+                log("W: sign lost (everOcr=$everOcr walks=$walks lost=$lostCount), sweep camera to find it again")
+                shot(f, "walk-lost")
                 logOcr("W", lines)
             }
             if (sweeping && sign == null) {
-                if (sweepSteps >= 12) { logOcr("W", lines); return fail("转了一圈也没有在画面里读到“ORIGEN”店招") }
-                sweepSteps++
+                if (sweepSteps >= SWEEP_SEQ.size) { logOcr("W", lines); return fail("走到半路丢了“ORIGEN”店招，转镜头也没找回来（已走 $walks 段）") }
+                val dx = SWEEP_SEQ[sweepSteps++]
                 onStatus("寻找 ORIGEN 店招…")
-                turn(f, 0.14f)
+                pendingCx = -1f
+                turn(f, dx)
                 continue
             }
 
@@ -499,16 +510,24 @@ class OneClickTask(
                 val dx = (-err / gain).coerceIn(-0.28f, 0.28f)
                 log("W: sign cx=%.3f (%s) err=%.3f -> turn dx=%.3f #%d".format(pos, if (posFromOcr) "ocr" else "assumed", err, dx, adjusts))
                 val s = turn(f, dx)
+                pendingDx = dx
+                if (sign == null) pendingCx = -1f
                 pos = (pos + (s ?: (gain * dx))).coerceIn(0f, 1f)   // 没测出来就按 gain 预测；下一轮 OCR 读到会覆盖
                 continue
             }
 
             // ---- 居中了：向前走一段 ----
+            if (walks >= MAX_WALKS) {
+                shot(f, "walk-toofar")
+                return fail("走了 $walks 段还没到柜台，已停止（避免越走越远）")
+            }
             adjusts = 0
+            pendingCx = -1f
             walks++
+            if (walks % 4 == 0) shot(f, "walk-$walks")
             log("W: walk forward #$walks (pos=%.3f %s)".format(pos, if (posFromOcr) "ocr" else "assumed"))
             onStatus("走向 ORIGEN…")
-            pushJoystick(0f, -1f, 1500)
+            pushJoystick(0f, -1f, 1200)
             delay(300)
         }
     }
