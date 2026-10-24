@@ -422,17 +422,16 @@ class OneClickTask(
         return null
     }
 
-    /** 等画面停稳（连续两次间隔 350ms 的帧差都很小）：镜头滑行、传送后的镜头动画结束后再继续。 */
+    /** 等画面停稳（相隔 450ms 的两帧差很小）：镜头滑行、传送后的镜头动画结束后再继续。每次取帧都要临时切换虚拟屏输出，所以尽量少取。 */
     private suspend fun waitStable(minMs: Long, maxMs: Long): Bitmap? {
         val t = now()
         delay(minMs)
         var prev = grab()
-        var stable = 0
         while (now() - t < maxMs) {
-            delay(350)
+            delay(450)
             val cur = grab() ?: continue
             val p = prev
-            if (p != null && FrameOps.diff(p, cur) < 4.0f) { if (++stable >= 2) return cur } else stable = 0
+            if (p != null && FrameOps.diff(p, cur) < 4.0f) return cur
             prev = cur
         }
         return prev
@@ -470,6 +469,7 @@ class OneClickTask(
         var lastWasWalk = false
         var spawnTries = 0
         var lastBurstDiff = -1f     // 最近一段走路前后两帧的画面差
+        var burstStartFrame: Bitmap? = null
         var lastBurstWasJump = false
         var jumpBudget = 2          // 最多靠跳翻过 2 处障碍（花坛矮墙、店门口低台）；到店门口后不再跳，免得对着墙跳触发攀爬
         var lastSignCy = 1f         // 最近一次读到店招的纵向位置，越小说明离店越近
@@ -541,6 +541,9 @@ class OneClickTask(
             // 任务距离只做辅助（距离没变且画面变化也不大时也算卡住）；任务做完没有距离提示时，靠画面照样能判断。
             val dist = questDistance(lines)
             if (lastWasWalk) {
+                val bs = burstStartFrame
+                lastBurstDiff = if (bs != null) FrameOps.diff(bs, f) else -1f
+                burstStartFrame = null
                 val d = lastBurstDiff
                 val distSame = dist != null && lastWalkDist != null && kotlin.math.abs(dist - lastWalkDist!!) <= 1
                 val blocked = d in 0f..BLOCK_DIFF || (distSame && d in 0f..(BLOCK_DIFF * 2))
@@ -663,8 +666,7 @@ class OneClickTask(
             lastBurstWasJump = jumpMode
             pushJoystick(lateral, if (lateral == 0f) -1f else -0.7f, 1200, jump = jumpMode)
             delay(300)
-            val after = grab()
-            lastBurstDiff = if (after != null) FrameOps.diff(f, after) else -1f
+            burstStartFrame = f   // 走完这段后的画面直接用下一轮 look 取到的那帧来比，不再额外取一帧（每次取帧都会让预览/游戏卡一下）
         }
     }
 
