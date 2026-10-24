@@ -53,10 +53,13 @@ class OneClickTask(
         private const val CAM_Y = 0.35f           // 右侧空白区拖动转镜头
         private const val CAM_MIN_X = 0.50f
         private const val CAM_MAX_X = 0.82f
+        private const val JUMP_X = 0.909f          // 右下“跳跃”键（跑步小人带箭头）
+        private const val JUMP_Y = 0.725f
         private const val WALK_TIMEOUT_MS = 150_000L
-        private const val MAX_WALKS = 18          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
+        private const val MAX_WALKS = 30          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
         private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
-        private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE|CAFE")
+        private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE|CAFE|[I1L]GE[NMŃ]")
+        private val DIST = Regex("(\\d{2,4})\\s*m(?![a-zA-Z])")   // 左上角任务提示里的“881m”
         private const val SPAWN_SIGN_X = 0.77f    // 镜头动画停稳后店招大约在画面横向 0.77 处（量自录屏，只在 OCR 读不出时当作初值）
         private const val GAIN0 = -3.5f             // 向右拖 1 个屏宽，画面内容向【左】移动约 3.5 个屏宽（实测：镜头很灵敏；日志里 dx=-0.049 → 画面右移 0.167）
         private const val SPAWN_TURN = 0.14f        // 传送落地后镜头正对纪念碑，店招在画面右侧之外；先向右拖这么多，店招会出现在画面右侧约 0.77 处（量自两次录屏）
@@ -311,32 +314,53 @@ class OneClickTask(
     // 这里做成闭环：OCR 找店招“ORIGEN”→ 偏了就转镜头 → 居中就向前走一小段 → 再看。
     // ------------------------------------------------------------------
 
-    /** 按住左摇杆 (dx,dy 为 -1..1 的方向，dy=-1 即向前) 持续 ms 毫秒，结束必抬手。 */
-    private suspend fun pushJoystick(dx: Float, dy: Float, ms: Long): Boolean {
+    /** 按住左摇杆 (dx,dy 为 -1..1 的方向，dy=-1 即向前) 持续 ms 毫秒，结束必抬手；jump=true 时按住摇杆的同时每 0.6 秒用另一根手指点一下跳跃键。 */
+    private suspend fun pushJoystick(dx: Float, dy: Float, ms: Long, jump: Boolean = false): Boolean {
         val cx = JOY_X * w
         val cy = JOY_Y * h
         val r = JOY_R * h
         val tx = cx + dx * r
         val ty = cy + dy * r
+        val jx = JUMP_X * w
+        val jy = JUMP_Y * h
         val t0 = SystemClock.uptimeMillis()
-        if (!VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_DOWN, t0, cx, cy)) return false
+        val one = intArrayOf(0)
+        val two = intArrayOf(0, 1)
+        if (!VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_DOWN, t0, one, floatArrayOf(cx), floatArrayOf(cy))) return false
         try {
             delay(40)
-            VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_MOVE, t0, (cx + tx) / 2, (cy + ty) / 2)
+            VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_MOVE, t0, one, floatArrayOf((cx + tx) / 2), floatArrayOf((cy + ty) / 2))
             delay(40)
             val end = now() + ms
             var k = 0
+            var lastJump = now() - 10_000
             while (now() < end) {
+                if (jump && now() - lastJump >= 600) {
+                    lastJump = now()
+                    VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_POINTER_DOWN, t0, two, floatArrayOf(tx, jx), floatArrayOf(ty, jy), 1)
+                    delay(70)
+                    VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_POINTER_UP, t0, two, floatArrayOf(tx, jx), floatArrayOf(ty, jy), 1)
+                }
                 // 持续发 MOVE（轻微抖动 1px），避免部分游戏认为手指已静止/丢失
-                VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_MOVE, t0, tx + (k++ % 2), ty)
+                VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_MOVE, t0, one, floatArrayOf(tx + (k++ % 2)), floatArrayOf(ty))
                 delay(80)
             }
         } finally {
             withContext(NonCancellable) {
-                VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_UP, t0, tx, ty)
+                VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_UP, t0, one, floatArrayOf(tx), floatArrayOf(ty))
             }
         }
         return true
+    }
+
+    /** 左上角任务提示里的距离（米）；读不到返回 null。用来判断“往前走了却没前进”（被矮墙/长椅挡住）。 */
+    private fun questDistance(lines: List<GameOcr.Line>): Int? {
+        for (l in lines) {
+            if (l.cx < 0.30f && l.cy in 0.25f..0.55f) {
+                DIST.find(l.text)?.let { return it.groupValues[1].toIntOrNull() }
+            }
+        }
+        return null
     }
 
     /** 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖，画面内容向左移）来转镜头；松手后镜头还会滑行约 1 秒，调用方要等画面停稳。 */
@@ -433,6 +457,9 @@ class OneClickTask(
         var insideSteps = 0
         var shotNoSign = false
         var shotInside = false
+        var stuck = 0               // 连续几段“往前走了但任务距离没变”（被挡住了）
+        var lastWalkDist: Int? = null
+        var lastWasWalk = false
         var pendingCx = -1f         // 刚做完转镜头、还没走路时，转之前 OCR 读到的店招位置，用来校准 gain
         var pendingDx = 0f
         val insidePattern = arrayOf(
@@ -478,6 +505,19 @@ class OneClickTask(
             log("W: look walks=$walks inside=$inside sign=" + (sign?.let { "(%.3f,%.3f)".format(it.cx, it.cy) } ?: "none") +
                 " pos=%.3f lost=$lostCount".format(pos))
 
+            // ---- 卡住检测：上一步是往前走，但任务距离基本没变 → 多半被花坛矮墙/长椅挡住，后面改成边走边跳 ----
+            val dist = questDistance(lines)
+            if (lastWasWalk && lastWalkDist != null && dist != null) {
+                if (kotlin.math.abs(dist - lastWalkDist!!) <= 1) {
+                    stuck++
+                    log("W: blocked? distance still ${dist}m, stuck=$stuck")
+                } else if (stuck > 0) {
+                    log("W: moving again (${lastWalkDist}m -> ${dist}m), clear stuck")
+                    stuck = 0
+                }
+            }
+            lastWasWalk = false
+
             // ---- 店内：没看到选项，按一组方向小步试探柜台 ----
             if (inside && sign == null) {
                 if (!shotInside) { shotInside = true; shot(f, "walk-inside") }
@@ -518,7 +558,7 @@ class OneClickTask(
             pendingCx = if (sign != null) sign.cx else -1f
 
             // ---- 找不到店招：从没读到过且已走了几段 / 读到过但连续丢了几轮 → 转镜头扫一遍用 OCR 找 ----
-            if (!sweeping && ((!everOcr && walks >= 3) || (everOcr && lostCount >= 3))) {
+            if (stuck == 0 && !sweeping && ((!everOcr && walks >= 3) || (everOcr && lostCount >= 3))) {
                 sweeping = true
                 sweepSteps = 0
                 log("W: sign lost (everOcr=$everOcr walks=$walks lost=$lostCount), sweep camera to find it again")
@@ -556,9 +596,18 @@ class OneClickTask(
             pendingCx = -1f
             walks++
             if (walks % 4 == 0) shot(f, "walk-$walks")
-            log("W: walk forward #$walks (pos=%.3f %s)".format(pos, if (posFromOcr) "ocr" else "assumed"))
-            onStatus("走向 ORIGEN…")
-            pushJoystick(0f, -1f, 1200)
+            // 卡住了：边走边跳（跳过花坛矮墙）；跳了还过不去，就轮流向右前/左前试探绕开长椅、路灯杆、窗户墙去找门
+            val jumpMode = stuck >= 1
+            val lateral = when {
+                stuck < 3 -> 0f
+                (stuck / 2) % 2 == 1 -> 0.7f
+                else -> -0.7f
+            }
+            log("W: walk forward #$walks (pos=%.3f %s) jump=$jumpMode lateral=$lateral dist=$dist".format(pos, if (posFromOcr) "ocr" else "assumed"))
+            onStatus(if (jumpMode) "跳过障碍…" else "走向 ORIGEN…")
+            lastWalkDist = dist
+            lastWasWalk = true
+            pushJoystick(lateral, if (lateral == 0f) -1f else -0.7f, if (jumpMode) 1800 else 1200, jump = jumpMode)
             delay(300)
         }
     }

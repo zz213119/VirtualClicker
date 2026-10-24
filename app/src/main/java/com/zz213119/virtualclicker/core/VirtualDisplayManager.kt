@@ -316,6 +316,39 @@ object VirtualDisplayManager {
         }
     }
 
+    /**
+     * 多指注入（一个手指按着摇杆、另一个手指点跳跃键）。ids/xs/ys 是此刻按着的所有手指；
+     * action 为 DOWN / MOVE / UP（单指），或 ACTION_POINTER_DOWN / ACTION_POINTER_UP（actionIndex = 变化的那根手指在数组里的下标）。
+     * 只在应用侧构造 MotionEvent，后台服务原样注入，所以不用动 AIDL。
+     */
+    fun touchMulti(
+        displayId: Int, action: Int, downTime: Long,
+        ids: IntArray, xs: FloatArray, ys: FloatArray, actionIndex: Int = 0
+    ): Boolean {
+        val n = ids.size
+        val now = android.os.SystemClock.uptimeMillis()
+        val props = Array(n) { i ->
+            android.view.MotionEvent.PointerProperties().apply {
+                id = ids[i]
+                toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
+            }
+        }
+        val coords = Array(n) { i ->
+            android.view.MotionEvent.PointerCoords().apply { x = xs[i]; y = ys[i]; pressure = 1f; size = 1f }
+        }
+        val act = if (action == android.view.MotionEvent.ACTION_POINTER_DOWN || action == android.view.MotionEvent.ACTION_POINTER_UP)
+            action or (actionIndex shl android.view.MotionEvent.ACTION_POINTER_INDEX_SHIFT) else action
+        val ev = android.view.MotionEvent.obtain(
+            downTime, now, act, n, props, coords, 0, 0, 1f, 1f, 0, 0,
+            android.view.InputDevice.SOURCE_TOUCHSCREEN, 0
+        )
+        return try {
+            injectMotionEvent(ev, displayId)
+        } finally {
+            ev.recycle()
+        }
+    }
+
     fun injectMotionEvent(event: android.view.MotionEvent, displayId: Int): Boolean =
         runCatching {
             service?.injectMotionEvent(event, displayId) ?: false
