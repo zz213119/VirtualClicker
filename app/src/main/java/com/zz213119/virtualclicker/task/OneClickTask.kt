@@ -475,13 +475,16 @@ class OneClickTask(
         var lastSignCy = 1f         // 最近一次读到店招的纵向位置，越小说明离店越近
         var pendingCx = -1f         // 刚做完转镜头、还没走路时，转之前 OCR 读到的店招位置，用来校准 gain
         var pendingDx = 0f
+        // 进店后“店长特供”选项要往左走才会出现（实测），所以先向左前、向左试探，再回到正前方，最后才试右边
         val insidePattern = arrayOf(
-            floatArrayOf(0f, -1f, 900f),
-            floatArrayOf(0.7f, -0.7f, 800f),
-            floatArrayOf(0.7f, -0.7f, 800f),
-            floatArrayOf(0f, -1f, 700f),
-            floatArrayOf(-0.7f, -0.7f, 800f),
-            floatArrayOf(1f, 0f, 600f)
+            floatArrayOf(-0.7f, -0.7f, 700f),
+            floatArrayOf(-1f, 0f, 600f),
+            floatArrayOf(-0.7f, -0.7f, 700f),
+            floatArrayOf(0f, -1f, 600f),
+            floatArrayOf(-1f, 0f, 700f),
+            floatArrayOf(-0.5f, -0.9f, 800f),
+            floatArrayOf(0.7f, -0.7f, 600f),
+            floatArrayOf(1f, 0f, 500f)
         )
 
         var lastTurnMoved = true    // 最近一次 turn() 之后画面是否真的变了（没变=拖动被游戏忽略了）
@@ -560,7 +563,7 @@ class OneClickTask(
             // ---- 店内：没看到选项，按一组方向小步试探柜台 ----
             if (inside && sign == null) {
                 if (!shotInside) { shotInside = true; shot(f, "walk-inside") }
-                if (insideSteps >= 24) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
+                if (insideSteps >= 32) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
                 val p = insidePattern[insideSteps % insidePattern.size]
                 log("W: inside step #$insideSteps dir=(${p[0]},${p[1]}) ${p[2].toLong()}ms")
                 pushJoystick(p[0], p[1], p[2].toLong())
