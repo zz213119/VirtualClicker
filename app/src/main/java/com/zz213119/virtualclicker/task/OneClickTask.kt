@@ -55,6 +55,7 @@ class OneClickTask(
         private const val CAM_MAX_X = 0.82f
         private const val JUMP_X = 0.909f          // 右下“跳跃”键（跑步小人带箭头）
         private const val JUMP_Y = 0.725f
+        private const val BLOCK_DIFF = 6.0f        // 走一段前后两帧的平均亮度差低于它，认为没前进（实际数值请看日志 frameDiff）
         private const val WALK_TIMEOUT_MS = 150_000L
         private const val MAX_WALKS = 30          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
         private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
@@ -460,6 +461,7 @@ class OneClickTask(
         var stuck = 0               // 连续几段“往前走了但任务距离没变”（被挡住了）
         var lastWalkDist: Int? = null
         var lastWasWalk = false
+        var lastBurstDiff = -1f     // 最近一段走路前后两帧的画面差
         var pendingCx = -1f         // 刚做完转镜头、还没走路时，转之前 OCR 读到的店招位置，用来校准 gain
         var pendingDx = 0f
         val insidePattern = arrayOf(
@@ -505,14 +507,18 @@ class OneClickTask(
             log("W: look walks=$walks inside=$inside sign=" + (sign?.let { "(%.3f,%.3f)".format(it.cx, it.cy) } ?: "none") +
                 " pos=%.3f lost=$lostCount".format(pos))
 
-            // ---- 卡住检测：上一步是往前走，但任务距离基本没变 → 多半被花坛矮墙/长椅挡住，后面改成边走边跳 ----
-            val dist = questDistance(lines)
-            if (lastWasWalk && lastWalkDist != null && dist != null) {
-                if (kotlin.math.abs(dist - lastWalkDist!!) <= 1) {
+            // ---- 卡住检测：上一步是往前走，但画面几乎没变（被矮墙/长椅挡住）→ 后面改成边走边跳 ----
+            // 主要看走路前后两帧的差：真在跑，整个场景都在变；顶着墙，只剩角色原地动画。
+            // 任务距离只做辅助（距离没变且画面变化也不大时也算卡住）；任务做完没有距离提示时，靠画面照样能判断。
+            if (lastWasWalk) {
+                val d = lastBurstDiff
+                val distSame = dist != null && lastWalkDist != null && kotlin.math.abs(dist - lastWalkDist!!) <= 1
+                val blocked = d in 0f..BLOCK_DIFF || (distSame && d in 0f..(BLOCK_DIFF * 2))
+                if (blocked) {
                     stuck++
-                    log("W: blocked? distance still ${dist}m, stuck=$stuck")
-                } else if (stuck > 0) {
-                    log("W: moving again (${lastWalkDist}m -> ${dist}m), clear stuck")
+                    log("W: blocked? frameDiff=%.1f distSame=$distSame dist=$dist stuck=$stuck".format(d))
+                } else {
+                    if (stuck > 0) log("W: moving again frameDiff=%.1f dist=$dist, clear stuck".format(d))
                     stuck = 0
                 }
             }
@@ -609,6 +615,8 @@ class OneClickTask(
             lastWasWalk = true
             pushJoystick(lateral, if (lateral == 0f) -1f else -0.7f, if (jumpMode) 1800 else 1200, jump = jumpMode)
             delay(300)
+            val after = grab()
+            lastBurstDiff = if (after != null) FrameOps.diff(f, after) else -1f
         }
     }
 
