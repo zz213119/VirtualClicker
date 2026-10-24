@@ -58,7 +58,8 @@ class OneClickTask(
         private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
         private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE|CAFE")
         private const val SPAWN_SIGN_X = 0.77f    // 镜头动画停稳后店招大约在画面横向 0.77 处（量自录屏，只在 OCR 读不出时当作初值）
-        private const val GAIN0 = 5.0f              // 向右拖 1 个屏宽，画面内容向右移动约 5 个屏宽（实测：镜头非常灵敏，且方向是“内容跟着手指走”）
+        private const val GAIN0 = -3.5f             // 向右拖 1 个屏宽，画面内容向【左】移动约 3.5 个屏宽（实测：镜头很灵敏；日志里 dx=-0.049 → 画面右移 0.167）
+        private const val SPAWN_TURN = 0.14f        // 传送落地后镜头正对纪念碑，店招在画面右侧之外；先向右拖这么多，店招会出现在画面右侧约 0.77 处（量自两次录屏）
     }
 
     private var displayId = -1
@@ -338,7 +339,7 @@ class OneClickTask(
         return true
     }
 
-    /** 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖，画面内容跟着向右移）来转镜头；松手后镜头还会滑行约 1 秒，调用方要等画面停稳。 */
+    /** 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖，画面内容向左移）来转镜头；松手后镜头还会滑行约 1 秒，调用方要等画面停稳。 */
     private suspend fun dragCamera(dxNorm: Float) {
         val d = dxNorm.coerceIn(-0.30f, 0.30f)
         val x0 = if (d >= 0) CAM_MIN_X else CAM_MAX_X
@@ -420,7 +421,7 @@ class OneClickTask(
         waitStable(600, 6000)
 
         val t0 = now()
-        var gain = GAIN0            // 拖动 1 个屏宽 → 画面内容横向移动多少个屏宽（正=内容跟着手指走）；转镜头后用前后两次读数校准
+        var gain = GAIN0            // 拖动 1 个屏宽 → 画面内容横向移动多少个屏宽（负=向右拖内容向左移）；转镜头后用实测平移/前后两次读数校准
         var pos = -1f               // 店招在画面里的横向位置估计（OCR 读到就用 OCR，否则用初值+转镜头预测）
         var posFromOcr = false
         var everOcr = false
@@ -448,6 +449,10 @@ class OneClickTask(
             dragCamera(dx)
             val after = waitStable(600, 3000) ?: return null
             val s = FrameOps.shiftX(before, after)
+            if (s != null && kotlin.math.abs(dx) >= 0.04f && kotlin.math.abs(s) < 0.22f) {
+                val g = s / dx
+                if (g in -8.0f..-1.5f) gain = 0.5f * gain + 0.5f * g
+            }
             log("W: drag dx=%.3f measured shift=%s gain=%.2f".format(dx, s?.let { "%.3f".format(it) } ?: "n/a", gain))
             return s
         }
@@ -490,7 +495,7 @@ class OneClickTask(
                 // 用转镜头前后两次读数校准 gain
                 if (pendingCx >= 0f && kotlin.math.abs(pendingDx) >= 0.05f) {
                     val g = (sign.cx - pendingCx) / pendingDx
-                    if (g in 2.0f..10.0f) { gain = 0.5f * gain + 0.5f * g; log("W: gain calibrated=%.2f (measured %.2f)".format(gain, g)) }
+                    if (g in -8.0f..-1.5f) { gain = 0.5f * gain + 0.5f * g; log("W: gain calibrated=%.2f (measured %.2f)".format(gain, g)) }
                 }
                 pendingCx = -1f
                 everOcr = true
@@ -501,10 +506,12 @@ class OneClickTask(
                 sweepSteps = 0
             } else if (pos < 0f) {
                 // OCR 读不出店招：传送落地的画面基本固定，先按截图里的位置当初值，边走边靠 OCR 纠正
-                pos = SPAWN_SIGN_X
                 posFromOcr = false
-                log("W: sign not readable, assume spawn position cx=$pos")
+                log("W: sign not visible at spawn, open-loop turn dx=$SPAWN_TURN then assume sign at cx=$SPAWN_SIGN_X")
                 if (!shotNoSign) { shotNoSign = true; shot(f, "walk-nosign") }
+                turn(f, SPAWN_TURN)
+                pos = SPAWN_SIGN_X
+                continue
             } else if (everOcr) {
                 lostCount++
             }
