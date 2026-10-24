@@ -510,6 +510,7 @@ class OneClickTask(
             // ---- 卡住检测：上一步是往前走，但画面几乎没变（被矮墙/长椅挡住）→ 后面改成边走边跳 ----
             // 主要看走路前后两帧的差：真在跑，整个场景都在变；顶着墙，只剩角色原地动画。
             // 任务距离只做辅助（距离没变且画面变化也不大时也算卡住）；任务做完没有距离提示时，靠画面照样能判断。
+            val dist = questDistance(lines)
             if (lastWasWalk) {
                 val d = lastBurstDiff
                 val distSame = dist != null && lastWalkDist != null && kotlin.math.abs(dist - lastWalkDist!!) <= 1
