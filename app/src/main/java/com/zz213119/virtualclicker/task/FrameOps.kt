@@ -97,4 +97,73 @@ object FrameOps {
         val r = sr / n; val g = sg / n; val b = sb / n
         return r > 200 && g > 150 && b < 140 && (r - b) > 80
     }
+
+    /**
+     * 估计镜头横向转动造成的画面平移：取中间一条带（避开左上小地图/右侧头像/左下摇杆），
+     * 按列求平均亮度得到一维轮廓，在 ±maxShift 内找最匹配的平移。
+     * 返回值按画面宽度归一化，正 = 画面内容向右移动；没把握（轮廓太平、匹配不明显）返回 null。
+     */
+    fun shiftX(
+        a: Bitmap, b: Bitmap,
+        l: Float = 0.22f, t: Float = 0.25f, r: Float = 0.86f, bt: Float = 0.60f,
+        maxShift: Float = 0.25f
+    ): Float? {
+        val cols = 256
+        fun prof(bm: Bitmap): FloatArray {
+            val x0 = (l * bm.width).toInt().coerceIn(0, bm.width - 2)
+            val x1 = (r * bm.width).toInt().coerceIn(x0 + 1, bm.width)
+            val y0 = (t * bm.height).toInt().coerceIn(0, bm.height - 2)
+            val y1 = (bt * bm.height).toInt().coerceIn(y0 + 1, bm.height)
+            val w = x1 - x0
+            val h = y1 - y0
+            val px = IntArray(w * h)
+            bm.getPixels(px, 0, w, x0, y0, w, h)
+            val out = FloatArray(cols)
+            for (c in 0 until cols) {
+                val xa = c * w / cols
+                val xb = maxOf(xa + 1, (c + 1) * w / cols).coerceAtMost(w)
+                var sum = 0f
+                var n = 0
+                var y = 0
+                while (y < h) {
+                    val row = y * w
+                    for (x in xa until xb) {
+                        val p = px[row + x]
+                        sum += 0.299f * ((p shr 16) and 0xFF) + 0.587f * ((p shr 8) and 0xFF) + 0.114f * (p and 0xFF)
+                        n++
+                    }
+                    y += 2
+                }
+                out[c] = if (n > 0) sum / n else 0f
+            }
+            val mean = out.average().toFloat()
+            for (i in out.indices) out[i] -= mean
+            return out
+        }
+        val pa = prof(a)
+        val pb = prof(b)
+        val colW = (r - l) / cols
+        val maxCols = (maxShift / colW).toInt().coerceAtMost(cols / 3)
+        val sad = FloatArray(2 * maxCols + 1)
+        for (s in -maxCols..maxCols) {
+            var sum = 0f
+            var n = 0
+            for (i in 0 until cols) {
+                val j = i + s
+                if (j < 0 || j >= cols) continue
+                sum += abs(pa[i] - pb[j])
+                n++
+            }
+            sad[s + maxCols] = if (n > cols / 3) sum / n else Float.MAX_VALUE
+        }
+        var best = 0
+        for (i in sad.indices) if (sad[i] < sad[best]) best = i
+        val valid = sad.filter { it < Float.MAX_VALUE }
+        if (valid.isEmpty()) return null
+        val avg = valid.average().toFloat()
+        var second = Float.MAX_VALUE
+        for (i in sad.indices) if (abs(i - best) > 4 && sad[i] < second) second = sad[i]
+        if (sad[best] > 0.75f * avg || sad[best] > 0.85f * second) return null
+        return (best - maxCols) * colW
+    }
 }

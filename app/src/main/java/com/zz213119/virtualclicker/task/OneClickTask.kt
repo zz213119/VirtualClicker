@@ -54,7 +54,8 @@ class OneClickTask(
         private const val CAM_MIN_X = 0.50f
         private const val CAM_MAX_X = 0.82f
         private const val WALK_TIMEOUT_MS = 150_000L
-        private val SIGN = Regex("ORIG|RIGEN|ORIGE")
+        private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE")
+        private const val SPAWN_SIGN_X = 0.642f   // 传送落地后店招大约在画面横向 0.64 处（量自截图，只在 OCR 读不出时当作初值）
     }
 
     private var displayId = -1
@@ -361,6 +362,30 @@ class OneClickTask(
     private fun findSign(lines: List<GameOcr.Line>): GameOcr.Line? =
         lines.firstOrNull { SIGN.containsMatchIn(it.text.uppercase(Locale.US)) }
 
+    /**
+     * 找店招：先看整图 OCR 的结果；读不到就把画面中间一条带切成 3 块、各放大 3 倍再识别
+     * （店招很小，还可能被路灯杆挡住一部分，整图识别经常读不出来）。返回整图归一化坐标。
+     */
+    private fun ocrSign(f: Bitmap, lines: List<GameOcr.Line>): GameOcr.Line? {
+        findSign(lines)?.let { return it }
+        val top = 0.30f
+        val bot = 0.70f
+        for (tile in arrayOf(floatArrayOf(0f, 0.5f), floatArrayOf(0.25f, 0.75f), floatArrayOf(0.5f, 1f))) {
+            val x0 = (tile[0] * f.width).toInt()
+            val x1 = (tile[1] * f.width).toInt().coerceAtMost(f.width)
+            val y0 = (top * f.height).toInt()
+            val y1 = (bot * f.height).toInt()
+            val up = runCatching {
+                val crop = Bitmap.createBitmap(f, x0, y0, x1 - x0, y1 - y0)
+                Bitmap.createScaledBitmap(crop, crop.width * 3, crop.height * 3, true)
+            }.getOrNull() ?: continue
+            val ls = runCatching { GameOcr.read(up) }.getOrDefault(emptyList())
+            val hit = findSign(ls) ?: continue
+            return GameOcr.Line(hit.text, tile[0] + hit.cx * (tile[1] - tile[0]), top + hit.cy * (bot - top))
+        }
+        return null
+    }
+
     private fun findShopOption(lines: List<GameOcr.Line>): GameOcr.Line? =
         lines.firstOrNull { it.text.contains("店长特供") && it.cx in 0.50f..0.80f && it.cy in 0.30f..0.70f }
 
@@ -369,14 +394,16 @@ class OneClickTask(
         delay(4000)   // 传送后的加载画面
 
         val t0 = now()
-        var gain = -1.0f                 // 拖动 1 个屏宽 → 店招在画面里横向移动多少（拖右=场景左移，所以初值为负）
-        var pendingCx = -1f              // 刚做过纯转镜头调整时，记下调整前店招位置用来校准 gain
-        var pendingDx = 0f
-        var sweepSteps = 0
-        var everSawSign = false
-        var lostWalks = 0
-        var insideSteps = 0
+        var gain = -1.0f            // 拖动 1 个屏宽 → 画面内容横向移动多少（拖右=内容左移，所以初值为负）；每次转镜头后用画面平移实测校准
+        var pos = -1f               // 店招在画面里的横向位置估计（OCR 读到就用 OCR，否则用初值+转镜头预测）
+        var posFromOcr = false
+        var everOcr = false
+        var adjusts = 0
         var walks = 0
+        var lostWalks = 0
+        var sweeping = false
+        var sweepSteps = 0
+        var insideSteps = 0
         var shotSign = false
         var shotInside = false
         val insidePattern = arrayOf(
@@ -387,6 +414,19 @@ class OneClickTask(
             floatArrayOf(-0.7f, -0.7f, 800f),
             floatArrayOf(1f, 0f, 600f)
         )
+
+        /** 拖一次镜头，返回实测的画面平移（null=测不出）；顺便校准 gain。 */
+        suspend fun turn(before: Bitmap, dx: Float): Float? {
+            dragCamera(dx)
+            val after = grab() ?: return null
+            val s = FrameOps.shiftX(before, after)
+            log("W: drag dx=%.3f measured shift=%s gain=%.2f".format(dx, s?.let { "%.3f".format(it) } ?: "n/a", gain))
+            if (s != null && kotlin.math.abs(dx) >= 0.03f) {
+                val g = s / dx
+                if (kotlin.math.abs(g) in 0.2f..3.5f) gain = 0.5f * gain + 0.5f * g
+            }
+            return s
+        }
 
         while (true) {
             if (now() - t0 > WALK_TIMEOUT_MS) return fail("传送后 ${WALK_TIMEOUT_MS / 1000} 秒内没有走到店长特供柜台")
@@ -405,7 +445,7 @@ class OneClickTask(
             }
 
             val inside = text.contains("库存") && text.contains("收入")
-            val sign = findSign(lines)
+            val sign = if (inside) null else ocrSign(f, lines)
 
             // ---- 店内：没看到选项，按一组方向小步试探柜台 ----
             if (inside && sign == null) {
@@ -420,53 +460,56 @@ class OneClickTask(
             }
 
             if (sign != null) {
-                everSawSign = true
+                if (!everOcr) { log("W: sign read by OCR at (${sign.cx},${sign.cy}) text=${sign.text}"); shot(f, "walk-sign") }
+                everOcr = true
+                posFromOcr = true
+                pos = sign.cx
                 lostWalks = 0
+                sweeping = false
                 sweepSteps = 0
-                if (!shotSign) { shotSign = true; shot(f, "walk-sign") }
-                // 校准镜头增益（只在上一步是纯转镜头时）
-                if (pendingCx >= 0f && kotlin.math.abs(pendingDx) > 0.02f) {
-                    val g = (sign.cx - pendingCx) / pendingDx
-                    if (kotlin.math.abs(g) in 0.2f..3.0f) { gain = 0.5f * gain + 0.5f * g; log("W: camera gain=$gain (measured $g)") }
-                }
-                pendingCx = -1f
-                val err = sign.cx - 0.5f
-                if (kotlin.math.abs(err) > 0.10f) {
-                    val dx = (-err / gain).coerceIn(-0.28f, 0.28f)
-                    log("W: sign cx=${sign.cx} err=$err -> drag camera dx=$dx")
-                    pendingCx = sign.cx
-                    pendingDx = dx
-                    dragCamera(dx)
-                    continue
-                }
-                walks++
-                log("W: sign centered cx=${sign.cx} cy=${sign.cy} -> walk forward #$walks")
-                onStatus("走向 ORIGEN…")
-                pushJoystick(0f, -1f, 1500)
-                delay(300)
+            } else if (pos < 0f) {
+                // OCR 读不出店招：传送落地的画面基本固定，先按截图里的位置当初值，边走边靠 OCR 纠正
+                pos = SPAWN_SIGN_X
+                posFromOcr = false
+                log("W: sign not readable, assume spawn position cx=$pos")
+                if (!shotSign) { shotSign = true; shot(f, "walk-nosign") }
+            } else if (posFromOcr) {
+                lostWalks++   // 之前读到过，现在被挡/出画面：保持朝向继续走
+            }
+
+            // ---- 一直读不到店招，而且已经走了几段：落地朝向可能和预设不同，转一圈用 OCR 找 ----
+            if (!everOcr && walks >= 3 && !sweeping) {
+                sweeping = true
+                sweepSteps = 0
+                log("W: still no OCR hit after $walks walks, sweep camera to look for the sign")
+                logOcr("W", lines)
+            }
+            if (sweeping && sign == null) {
+                if (sweepSteps >= 12) { logOcr("W", lines); return fail("转了一圈也没有在画面里读到“ORIGEN”店招") }
+                sweepSteps++
+                onStatus("寻找 ORIGEN 店招…")
+                turn(f, 0.14f)
                 continue
             }
 
-            // ---- 看不到店招 ----
-            pendingCx = -1f
-            if (everSawSign && lostWalks < 4) {
-                // 靠近后店招可能被遮挡/出画面，别乱转镜头，直接往前走
-                lostWalks++
-                walks++
-                log("W: sign lost, keep walking #$lostWalks")
-                pushJoystick(0f, -1f, 1200)
-                delay(300)
+            // ---- 把店招转到画面中间 ----
+            val err = pos - 0.5f
+            if (kotlin.math.abs(err) > 0.08f && adjusts < 6) {
+                adjusts++
+                val dx = (-err / gain).coerceIn(-0.28f, 0.28f)
+                log("W: sign cx=%.3f (%s) err=%.3f -> turn dx=%.3f #%d".format(pos, if (posFromOcr) "ocr" else "assumed", err, dx, adjusts))
+                val s = turn(f, dx)
+                pos = (pos + (s ?: (gain * dx))).coerceIn(0f, 1f)   // 没测出来就按 gain 预测；下一轮 OCR 读到会覆盖
                 continue
             }
-            if (sweepSteps >= 16) {
-                logOcr("W", lines)
-                return fail("转了一圈也没有在画面里找到“ORIGEN”店招")
-            }
-            sweepSteps++
-            onStatus("寻找 ORIGEN 店招…")
-            log("W: no sign, sweep camera #$sweepSteps")
-            if (sweepSteps == 1) logOcr("W", lines)
-            dragCamera(0.20f)
+
+            // ---- 居中了：向前走一段 ----
+            adjusts = 0
+            walks++
+            log("W: walk forward #$walks (pos=%.3f %s)".format(pos, if (posFromOcr) "ocr" else "assumed"))
+            onStatus("走向 ORIGEN…")
+            pushJoystick(0f, -1f, 1500)
+            delay(300)
         }
     }
 
