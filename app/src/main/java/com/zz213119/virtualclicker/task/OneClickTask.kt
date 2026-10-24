@@ -38,9 +38,17 @@ class OneClickTask(
         private val QUEUE_POS = Regex("第\\s*(\\d+)\\s*/\\s*(\\d+)\\s*名")
         private val PERCENT = Regex("(^|\\D)(\\d{1,3})\\s*%")
 
+        // ---- 备用入口：HUD 右上角手机图标 → 手机菜单里的“都市大亨”（坐标量自虚拟屏截图）----
+        private const val HOUSE_FALLBACK_MS = 15_000L   // 这么久没能通过左上角房子打开，就改走手机菜单
+        private const val PHONE_X = 0.967f
+        private const val PHONE_Y = 0.040f
+        private const val PHONE_TYCOON_X = 0.863f       // 手机菜单里“都市大亨”图标
+        private const val PHONE_TYCOON_Y = 0.423f
+        private val PHONE_WORDS = arrayOf("商城", "活动", "环期赏令", "角色", "公告", "时间系统", "集市", "羁遇", "编队", "好友", "鉴别等级")
+
         // ---- 传送后移动（坐标均为归一化比例，量自录屏）----
-        private const val JOY_X = 0.173f          // 左下角摇杆中心
-        private const val JOY_Y = 0.754f
+        private const val JOY_X = 0.155f          // 左下角摇杆中心（量自虚拟屏截图）
+        private const val JOY_Y = 0.783f
         private const val JOY_R = 0.12f           // 推满的位移 = 屏幕高度 * 0.12
         private const val CAM_Y = 0.35f           // 右侧空白区拖动转镜头
         private const val CAM_MIN_X = 0.50f
@@ -123,15 +131,20 @@ class OneClickTask(
     private suspend fun navigateToShop(): YihuanShopTask.Outcome {
         val houseT = asset("house_icon.png")
         val markerT = asset("marker_ring.png")
-        val roiHouse = floatArrayOf(0f, 0f, 0.42f, 0.30f)
+        val roiHouse = floatArrayOf(0.04f, 0f, 0.32f, 0.16f)   // 房子在小地图旁边的顶部一排；缩小范围避免误配左侧菜单按钮
         val roiMarker = floatArrayOf(0.30f, 0.30f, 0.66f, 0.70f)
 
-        // ---- A. 点左上角房子，等待"都市大亨"界面 ----
+        // ---- A. 打开"都市大亨"：先点左上角房子；一段时间还没打开（图标被遮挡/没匹配上）就改走右上角手机菜单 ----
         onStatus("打开都市大亨…")
         val tA = now()
+        var fallbackSince = tA
         var houseTaps = 0
+        var phoneTaps = 0
+        var lastPhoneTap = 0L
+        var menuTaps = 0
+        var lastMenuTap = 0L
         while (true) {
-            if (now() - tA > 120_000) return fail("没有找到左上角“都市大亨”图标，或点击后没有打开（可能被弹窗挡住）")
+            if (now() - tA > 150_000) return fail("没能打开“都市大亨”（房子图标和手机菜单两种方式都没成功，可能被弹窗挡住）")
             val lk = look()
             if (lk == null) { delay(1500); continue }
             val (f, lines) = lk
@@ -139,19 +152,51 @@ class OneClickTask(
             if (text.contains("每日登录奖励") || text.contains("点击空白区域")) {
                 log("A: daily reward popup, tap blank")
                 tap(0.12f, 0.45f)
+                fallbackSince = now()
                 delay(2500)
                 continue
             }
-            if (text.contains("甜梦等级") || text.contains("都市大亨")) { log("A: city tycoon screen"); shot(f, "nav-tycoon"); break }
+            val phoneMenu = PHONE_WORDS.count { text.contains(it) } >= 2
+            if (!phoneMenu && (text.contains("甜梦等级") || text.contains("都市大亨"))) { log("A: city tycoon screen"); shot(f, "nav-tycoon"); break }
+
+            // 手机菜单已打开：点里面的“都市大亨”
+            if (phoneMenu) {
+                if (now() - lastMenuTap > 2500) {
+                    if (++menuTaps > 6) { shot(f, "nav-phone-fail"); return fail("手机菜单里点“都市大亨”多次没有反应") }
+                    val line = lines.firstOrNull { it.text.contains("都市大亨") }
+                    val x = line?.cx ?: PHONE_TYCOON_X
+                    val y = if (line != null) line.cy - 0.05f else PHONE_TYCOON_Y   // OCR 只认到文字标签，图标在标签上方
+                    if (menuTaps == 1) shot(f, "nav-phone-menu")
+                    log("A: phone menu open, tap 都市大亨 (${if (line != null) "ocr" else "fixed"} $x,$y) #$menuTaps")
+                    tap(x, y)
+                    lastMenuTap = now()
+                }
+                delay(1500)
+                continue
+            }
+
+            val useFallback = now() - fallbackSince > HOUSE_FALLBACK_MS || houseTaps >= 3
+            if (useFallback) {
+                if (now() - lastPhoneTap > 4500) {
+                    if (++phoneTaps > 5) { shot(f, "nav-phone-fail"); return fail("点右上角手机图标多次也没能打开手机菜单") }
+                    if (phoneTaps == 1) { shot(f, "nav-fallback"); onStatus("改用手机菜单打开都市大亨…") }
+                    log("A: house route failed (taps=$houseTaps), tap phone icon #$phoneTaps")
+                    tap(PHONE_X, PHONE_Y)
+                    lastPhoneTap = now()
+                    delay(2500)   // 等手机菜单动画
+                } else delay(1000)
+                continue
+            }
+
             val m = IconFinder.find(f, houseT, IconFinder.Mode.WHITE, roiHouse)
             log("A: house icon match=" + (m?.let { "%.2f/%.2f at (%.3f,%.3f)".format(it.score, it.second, it.nx, it.ny) } ?: "none"))
-            if (m != null && m.score >= 0.55f && houseTaps < 8) {
+            if (m != null && m.score >= 0.55f) {
                 if (houseTaps == 0) shot(f, "nav-hud")
                 houseTaps++
                 tap(m.nx, m.ny)
                 delay(3000)
             } else {
-                if (houseTaps == 0 && now() - tA > 20_000) logOcr("A", lines)
+                if (houseTaps == 0 && now() - tA > 8_000) logOcr("A", lines)
                 delay(1500)
             }
         }
