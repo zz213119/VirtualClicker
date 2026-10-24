@@ -1283,7 +1283,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.yihuanTitle).text =
             if (experimental) "异环 · 店长特供 1-1（实验）" else "异环 · 店长特供 1-1"
         findViewById<TextView>(R.id.yihuanHelp).text =
-            if (experimental) "实验：从启动游戏开始一键完成 —— 登录 → 开始游戏 → 进入游戏 → 都市大亨 → 店长特供 → 传送。目前做到传送，后续移动步骤陆续加入；点“关闭”可随时停止。"
+            if (experimental) "实验：全自动 —— 启动游戏 → 登录 → 进入游戏 → 都市大亨 → 店长特供 → 传送 → 走进 ORIGEN 咖啡店 → 自动刷 1-1；体力耗尽时发通知。点“关闭”可随时停止。关掉实验开关则回到半自动：需自己先把游戏停在店内。"
             else "循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在上面启动虚拟屏。点“关闭”可随时停止。"
         val btn = findViewById<Button>(R.id.runYihuanShopTask)
         if (running) {
