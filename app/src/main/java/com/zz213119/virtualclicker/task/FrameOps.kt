@@ -187,4 +187,16 @@ object FrameOps {
         }
         return sum.toFloat() / pa.size
     }
+
+    /** 整帧平均亮度（0..255）；加载黑屏/淡入时很低。 */
+    fun meanLuma(a: Bitmap): Float {
+        val w = 64
+        val h = 36
+        val sa = Bitmap.createScaledBitmap(a, w, h, true)
+        val pa = IntArray(w * h)
+        sa.getPixels(pa, 0, w, 0, 0, w, h)
+        var sum = 0L
+        for (x in pa) sum += (((x shr 16) and 0xFF) * 299 + ((x shr 8) and 0xFF) * 587 + (x and 0xFF) * 114) / 1000
+        return sum.toFloat() / pa.size
+    }
 }

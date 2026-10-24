@@ -401,8 +401,13 @@ class OneClickTask(
      * 找店招：先看整图 OCR 的结果；读不到就把画面中间一条带切成 3 块、各放大 3 倍再识别
      * （店招很小，还可能被路灯杆挡住一部分，整图识别经常读不出来）。返回整图归一化坐标。
      */
-    private fun ocrSign(f: Bitmap, lines: List<GameOcr.Line>): GameOcr.Line? {
+    private var lastDeepOcr = 0L
+
+    private fun ocrSign(f: Bitmap, lines: List<GameOcr.Line>, deep: Boolean): GameOcr.Line? {
         findSign(lines)?.let { return it }
+        // 分块放大识别很吃 CPU（会让游戏画面卡几秒），远处店招本来也读不出来：只在走近之后/找店招时做，且至少间隔 3 秒
+        if (!deep || now() - lastDeepOcr < 3_000) return null
+        lastDeepOcr = now()
         val top = 0.33f
         val bot = 0.67f
         for (x in floatArrayOf(0.4f, 0.2f, 0.6f, 0f)) {   // 先看中间偏右（落地后店招多在这一带），再看其它
@@ -413,7 +418,7 @@ class OneClickTask(
             val y1 = (bot * f.height).toInt()
             val up = runCatching {
                 val crop = Bitmap.createBitmap(f, x0, y0, x1 - x0, y1 - y0)
-                Bitmap.createScaledBitmap(crop, crop.width * 4, crop.height * 4, true)
+                Bitmap.createScaledBitmap(crop, crop.width * 3, crop.height * 3, true)
             }.getOrNull() ?: continue
             val ls = runCatching { GameOcr.read(up) }.getOrDefault(emptyList())
             val hit = findSign(ls) ?: continue
@@ -442,14 +447,16 @@ class OneClickTask(
 
     private suspend fun walkToShop(): YihuanShopTask.Outcome {
         onStatus("前往店长特供…")
-        // 等传送加载完（出现游戏里的 UID 角标），再等传送后的镜头动画停下——动画期间拖镜头会被忽略
+        // 等传送后的场景真正出来并稳定：至少 7 秒（传送后有一段镜头动画，期间拖镜头会被忽略），
+        // 画面不是黑的（UID 角标在加载画面上也会显示，不能只看它），且连续两帧基本不变
         val tw = now()
-        while (now() - tw < 25_000) {
-            val lk0 = look()
-            if (lk0 != null && lk0.second.any { it.text.contains("UID") }) break
-            delay(800)
+        while (now() - tw < 45_000) {
+            delay(1000)
+            if (now() - tw < 7_000) continue
+            val st = waitStable(300, 4000)
+            if (st != null && FrameOps.meanLuma(st) > 25f) break
+            log("W: scene not ready yet (black/loading), keep waiting")
         }
-        waitStable(600, 6000)
 
         val t0 = now()
         var gain = GAIN0            // 拖动 1 个屏宽 → 画面内容横向移动多少个屏宽（负=向右拖内容向左移）；转镜头后用实测平移/前后两次读数校准
@@ -497,7 +504,7 @@ class OneClickTask(
                 dragCamera(dx, attempt)
                 after = waitStable(600, 3000)
                 val d = if (after != null) FrameOps.diff(before, after) else -1f
-                lastTurnMoved = d >= 3.0f
+                lastTurnMoved = d >= 6.0f
                 if (lastTurnMoved || attempt >= 2) {
                     if (!lastTurnMoved) log("W: drag dx=%.3f still had no effect after ${attempt + 1} tries (diff=%.1f)".format(dx, d))
                     break
@@ -532,7 +539,7 @@ class OneClickTask(
             }
 
             val inside = text.contains("库存") && text.contains("收入")
-            val sign = if (inside) null else ocrSign(f, lines)
+            val sign = if (inside) null else ocrSign(f, lines, walks >= 2 || sweeping || everOcr)
             log("W: look walks=$walks inside=$inside sign=" + (sign?.let { "(%.3f,%.3f)".format(it.cx, it.cy) } ?: "none") +
                 " pos=%.3f lost=$lostCount".format(pos))
 
