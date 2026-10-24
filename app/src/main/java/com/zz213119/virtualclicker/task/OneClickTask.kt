@@ -315,7 +315,7 @@ class OneClickTask(
     // 这里做成闭环：OCR 找店招“ORIGEN”→ 偏了就转镜头 → 居中就向前走一小段 → 再看。
     // ------------------------------------------------------------------
 
-    /** 按住左摇杆 (dx,dy 为 -1..1 的方向，dy=-1 即向前) 持续 ms 毫秒，结束必抬手；jump=true 时按住摇杆的同时每 0.6 秒用另一根手指点一下跳跃键。 */
+    /** 按住左摇杆 (dx,dy 为 -1..1 的方向，dy=-1 即向前) 持续 ms 毫秒，结束必抬手；jump=true 时按住摇杆的同时用另一根手指点一下跳跃键（每段只跳一次）。 */
     private suspend fun pushJoystick(dx: Float, dy: Float, ms: Long, jump: Boolean = false): Boolean {
         val cx = JOY_X * w
         val cy = JOY_Y * h
@@ -334,10 +334,10 @@ class OneClickTask(
             delay(40)
             val end = now() + ms
             var k = 0
-            var lastJump = now() - 10_000
+            var jumped = false
             while (now() < end) {
-                if (jump && now() - lastJump >= 600) {
-                    lastJump = now()
+                if (jump && !jumped) {
+                    jumped = true   // 每段只跳一次：连跳容易在翻过矮台后又顶着墙跳，触发攀爬
                     VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_POINTER_DOWN, t0, two, floatArrayOf(tx, jx), floatArrayOf(ty, jy), 1)
                     delay(70)
                     VirtualDisplayManager.touchMulti(displayId, MotionEvent.ACTION_POINTER_UP, t0, two, floatArrayOf(tx, jx), floatArrayOf(ty, jy), 1)
@@ -462,6 +462,9 @@ class OneClickTask(
         var lastWalkDist: Int? = null
         var lastWasWalk = false
         var lastBurstDiff = -1f     // 最近一段走路前后两帧的画面差
+        var lastBurstWasJump = false
+        var jumpBudget = 2          // 最多靠跳翻过 2 处障碍（花坛矮墙、店门口低台）；到店门口后不再跳，免得对着墙跳触发攀爬
+        var lastSignCy = 1f         // 最近一次读到店招的纵向位置，越小说明离店越近
         var pendingCx = -1f         // 刚做完转镜头、还没走路时，转之前 OCR 读到的店招位置，用来校准 gain
         var pendingDx = 0f
         val insidePattern = arrayOf(
@@ -519,7 +522,13 @@ class OneClickTask(
                     stuck++
                     log("W: blocked? frameDiff=%.1f distSame=$distSame dist=$dist stuck=$stuck".format(d))
                 } else {
-                    if (stuck > 0) log("W: moving again frameDiff=%.1f dist=$dist, clear stuck".format(d))
+                    if (stuck > 0) {
+                        if (lastBurstWasJump) {
+                            jumpBudget--
+                            if (lastSignCy < 0.30f) jumpBudget = 0   // 已经在店门口附近翻过去了，后面不再跳
+                        }
+                        log("W: moving again frameDiff=%.1f dist=$dist, clear stuck, jumpBudget=$jumpBudget".format(d))
+                    }
                     stuck = 0
                 }
             }
@@ -548,6 +557,7 @@ class OneClickTask(
                 everOcr = true
                 posFromOcr = true
                 pos = sign.cx
+                lastSignCy = sign.cy
                 lostCount = 0
                 sweeping = false
                 sweepSteps = 0
@@ -583,9 +593,11 @@ class OneClickTask(
 
             // ---- 把店招转到画面中间 ----
             val err = pos - 0.5f
-            if (kotlin.math.abs(err) > 0.07f && adjusts < 8) {
+            val wantDx = -err / gain * 0.9f
+            // 拖动太短（<0.025）镜头不会动，等于白转；误差不大就直接往前走
+            if (kotlin.math.abs(err) > 0.10f && kotlin.math.abs(wantDx) >= 0.025f && adjusts < 8) {
                 adjusts++
-                val dx = (-err / gain * 0.9f).coerceIn(-0.08f, 0.08f)
+                val dx = wantDx.coerceIn(-0.08f, 0.08f)
                 log("W: sign cx=%.3f (%s) err=%.3f -> turn dx=%.3f #%d".format(pos, if (posFromOcr) "ocr" else "assumed", err, dx, adjusts))
                 val s = turn(f, dx)
                 pendingDx = dx
@@ -603,18 +615,26 @@ class OneClickTask(
             pendingCx = -1f
             walks++
             if (walks % 4 == 0) shot(f, "walk-$walks")
-            // 卡住了：边走边跳（跳过花坛矮墙）；跳了还过不去，就轮流向右前/左前试探绕开长椅、路灯杆、窗户墙去找门
-            val jumpMode = stuck >= 1
+            // 卡住了：还有跳的额度就跳一下过去；没有额度（已经到店门口）就别跳，改成向右前/左前试探找门，卡得久了先后退一下再来
+            val jumpMode = stuck >= 1 && jumpBudget > 0
             val lateral = when {
-                stuck < 3 -> 0f
-                (stuck / 2) % 2 == 1 -> 0.7f
-                else -> -0.7f
+                stuck == 0 -> 0f
+                jumpMode -> if (stuck < 3) 0f else if ((stuck / 2) % 2 == 1) 0.7f else -0.7f
+                else -> if (((stuck - 1) / 2) % 2 == 0) 0.7f else -0.7f    // 门在店招中心附近偏右，先向右试
             }
-            log("W: walk forward #$walks (pos=%.3f %s) jump=$jumpMode lateral=$lateral dist=$dist".format(pos, if (posFromOcr) "ocr" else "assumed"))
+            if (!jumpMode && stuck >= 5 && stuck % 5 == 0) {
+                log("W: stuck=$stuck, back off a bit")
+                pushJoystick(0f, 1f, 900)
+                stuck++
+                delay(300)
+                continue
+            }
+            log("W: walk forward #$walks (pos=%.3f %s) jump=$jumpMode lateral=$lateral dist=$dist budget=$jumpBudget".format(pos, if (posFromOcr) "ocr" else "assumed"))
             onStatus(if (jumpMode) "跳过障碍…" else "走向 ORIGEN…")
             lastWalkDist = dist
             lastWasWalk = true
-            pushJoystick(lateral, if (lateral == 0f) -1f else -0.7f, if (jumpMode) 1800 else 1200, jump = jumpMode)
+            lastBurstWasJump = jumpMode
+            pushJoystick(lateral, if (lateral == 0f) -1f else -0.7f, 1200, jump = jumpMode)
             delay(300)
             val after = grab()
             lastBurstDiff = if (after != null) FrameOps.diff(f, after) else -1f
