@@ -166,4 +166,25 @@ object FrameOps {
         if (sad[best] > 0.75f * avg || sad[best] > 0.85f * second) return null
         return (best - maxCols) * colW
     }
+
+    /** 两帧的平均亮度差（缩到 96x54 比较，0..255）；镜头在转/画面在变时明显偏大，静止时很小。 */
+    fun diff(a: Bitmap, b: Bitmap): Float {
+        val w = 96
+        val h = 54
+        val sa = Bitmap.createScaledBitmap(a, w, h, true)
+        val sb = Bitmap.createScaledBitmap(b, w, h, true)
+        val pa = IntArray(w * h)
+        val pb = IntArray(w * h)
+        sa.getPixels(pa, 0, w, 0, 0, w, h)
+        sb.getPixels(pb, 0, w, 0, 0, w, h)
+        var sum = 0L
+        for (i in pa.indices) {
+            val x = pa[i]
+            val y = pb[i]
+            val la = ((x shr 16) and 0xFF) * 299 + ((x shr 8) and 0xFF) * 587 + (x and 0xFF) * 114
+            val lb = ((y shr 16) and 0xFF) * 299 + ((y shr 8) and 0xFF) * 587 + (y and 0xFF) * 114
+            sum += abs(la - lb) / 1000
+        }
+        return sum.toFloat() / pa.size
+    }
 }

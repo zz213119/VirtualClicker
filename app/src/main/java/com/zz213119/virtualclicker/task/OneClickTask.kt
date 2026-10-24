@@ -55,9 +55,10 @@ class OneClickTask(
         private const val CAM_MAX_X = 0.82f
         private const val WALK_TIMEOUT_MS = 150_000L
         private const val MAX_WALKS = 18          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
-        private val SWEEP_SEQ = floatArrayOf(0.2f, 0.2f, 0.2f, -0.3f, -0.3f, -0.3f, -0.3f, -0.3f)   // 找店招时的转镜头顺序：先向右扫，再回头向左
+        private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
         private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE|CAFE")
-        private const val SPAWN_SIGN_X = 0.642f   // 传送落地后店招大约在画面横向 0.64 处（量自截图，只在 OCR 读不出时当作初值）
+        private const val SPAWN_SIGN_X = 0.77f    // 镜头动画停稳后店招大约在画面横向 0.77 处（量自录屏，只在 OCR 读不出时当作初值）
+        private const val GAIN0 = 5.0f              // 向右拖 1 个屏宽，画面内容向右移动约 5 个屏宽（实测：镜头非常灵敏，且方向是“内容跟着手指走”）
     }
 
     private var displayId = -1
@@ -337,7 +338,7 @@ class OneClickTask(
         return true
     }
 
-    /** 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖）来转镜头。 */
+    /** 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖，画面内容跟着向右移）来转镜头；松手后镜头还会滑行约 1 秒，调用方要等画面停稳。 */
     private suspend fun dragCamera(dxNorm: Float) {
         val d = dxNorm.coerceIn(-0.30f, 0.30f)
         val x0 = if (d >= 0) CAM_MIN_X else CAM_MAX_X
@@ -358,7 +359,6 @@ class OneClickTask(
                 VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_UP, t0, x1 * w, y)
             }
         }
-        delay(500)   // 等镜头停稳
     }
 
     private fun findSign(lines: List<GameOcr.Line>): GameOcr.Line? =
@@ -370,22 +370,39 @@ class OneClickTask(
      */
     private fun ocrSign(f: Bitmap, lines: List<GameOcr.Line>): GameOcr.Line? {
         findSign(lines)?.let { return it }
-        val top = 0.30f
-        val bot = 0.70f
-        for (tile in arrayOf(floatArrayOf(0f, 0.5f), floatArrayOf(0.25f, 0.75f), floatArrayOf(0.5f, 1f))) {
-            val x0 = (tile[0] * f.width).toInt()
-            val x1 = (tile[1] * f.width).toInt().coerceAtMost(f.width)
+        val top = 0.33f
+        val bot = 0.67f
+        for (x in floatArrayOf(0.4f, 0.2f, 0.6f, 0f)) {   // 先看中间偏右（落地后店招多在这一带），再看其它
+            val x1n = (x + 0.4f).coerceAtMost(1f)
+            val x0 = (x * f.width).toInt()
+            val x1 = (x1n * f.width).toInt().coerceAtMost(f.width)
             val y0 = (top * f.height).toInt()
             val y1 = (bot * f.height).toInt()
             val up = runCatching {
                 val crop = Bitmap.createBitmap(f, x0, y0, x1 - x0, y1 - y0)
-                Bitmap.createScaledBitmap(crop, crop.width * 3, crop.height * 3, true)
+                Bitmap.createScaledBitmap(crop, crop.width * 4, crop.height * 4, true)
             }.getOrNull() ?: continue
             val ls = runCatching { GameOcr.read(up) }.getOrDefault(emptyList())
             val hit = findSign(ls) ?: continue
-            return GameOcr.Line(hit.text, tile[0] + hit.cx * (tile[1] - tile[0]), top + hit.cy * (bot - top))
+            return GameOcr.Line(hit.text, x + hit.cx * (x1n - x), top + hit.cy * (bot - top))
         }
         return null
+    }
+
+    /** 等画面停稳（连续两次间隔 350ms 的帧差都很小）：镜头滑行、传送后的镜头动画结束后再继续。 */
+    private suspend fun waitStable(minMs: Long, maxMs: Long): Bitmap? {
+        val t = now()
+        delay(minMs)
+        var prev = grab()
+        var stable = 0
+        while (now() - t < maxMs) {
+            delay(350)
+            val cur = grab() ?: continue
+            val p = prev
+            if (p != null && FrameOps.diff(p, cur) < 4.0f) { if (++stable >= 2) return cur } else stable = 0
+            prev = cur
+        }
+        return prev
     }
 
     private fun findShopOption(lines: List<GameOcr.Line>): GameOcr.Line? =
@@ -393,10 +410,17 @@ class OneClickTask(
 
     private suspend fun walkToShop(): YihuanShopTask.Outcome {
         onStatus("前往店长特供…")
-        delay(4000)   // 传送后的加载画面
+        // 等传送加载完（出现游戏里的 UID 角标），再等传送后的镜头动画停下——动画期间拖镜头会被忽略
+        val tw = now()
+        while (now() - tw < 25_000) {
+            val lk0 = look()
+            if (lk0 != null && lk0.second.any { it.text.contains("UID") }) break
+            delay(800)
+        }
+        waitStable(600, 6000)
 
         val t0 = now()
-        var gain = -1.0f            // 拖动 1 个屏宽 → 画面内容横向移动多少（拖右=内容左移，所以初值为负）；每次转镜头后用前后两次 OCR 的店招位置校准
+        var gain = GAIN0            // 拖动 1 个屏宽 → 画面内容横向移动多少个屏宽（正=内容跟着手指走）；转镜头后用前后两次读数校准
         var pos = -1f               // 店招在画面里的横向位置估计（OCR 读到就用 OCR，否则用初值+转镜头预测）
         var posFromOcr = false
         var everOcr = false
@@ -422,7 +446,7 @@ class OneClickTask(
         /** 拖一次镜头，返回实测的画面平移（null=测不出，仅供日志参考）。 */
         suspend fun turn(before: Bitmap, dx: Float): Float? {
             dragCamera(dx)
-            val after = grab() ?: return null
+            val after = waitStable(600, 3000) ?: return null
             val s = FrameOps.shiftX(before, after)
             log("W: drag dx=%.3f measured shift=%s gain=%.2f".format(dx, s?.let { "%.3f".format(it) } ?: "n/a", gain))
             return s
@@ -466,7 +490,7 @@ class OneClickTask(
                 // 用转镜头前后两次读数校准 gain
                 if (pendingCx >= 0f && kotlin.math.abs(pendingDx) >= 0.05f) {
                     val g = (sign.cx - pendingCx) / pendingDx
-                    if (kotlin.math.abs(g) in 0.3f..3.0f) { gain = 0.5f * gain + 0.5f * g; log("W: gain calibrated=%.2f (measured %.2f)".format(gain, g)) }
+                    if (g in 2.0f..10.0f) { gain = 0.5f * gain + 0.5f * g; log("W: gain calibrated=%.2f (measured %.2f)".format(gain, g)) }
                 }
                 pendingCx = -1f
                 everOcr = true
@@ -505,9 +529,9 @@ class OneClickTask(
 
             // ---- 把店招转到画面中间 ----
             val err = pos - 0.5f
-            if (kotlin.math.abs(err) > 0.08f && adjusts < 6) {
+            if (kotlin.math.abs(err) > 0.07f && adjusts < 8) {
                 adjusts++
-                val dx = (-err / gain).coerceIn(-0.28f, 0.28f)
+                val dx = (-err / gain * 0.9f).coerceIn(-0.08f, 0.08f)
                 log("W: sign cx=%.3f (%s) err=%.3f -> turn dx=%.3f #%d".format(pos, if (posFromOcr) "ocr" else "assumed", err, dx, adjusts))
                 val s = turn(f, dx)
                 pendingDx = dx
