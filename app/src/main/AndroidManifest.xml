@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
+        android:name=".VcApp"
         android:allowBackup="false"
         android:label="VirtualClicker"
         android:supportsRtl="true"

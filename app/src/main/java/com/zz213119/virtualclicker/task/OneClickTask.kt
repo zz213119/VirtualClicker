@@ -475,6 +475,7 @@ class OneClickTask(
         var lastWalkDist: Int? = null
         var lastWasWalk = false
         var spawnTries = 0
+        var distSameCount = 0       // 连续几段任务距离没变（爬墙时画面在变，光看画面差判断不出来）
         var lastBurstDiff = -1f     // 最近一段走路前后两帧的画面差
         var burstStartFrame: Bitmap? = null
         var lastBurstWasJump = false
@@ -553,7 +554,8 @@ class OneClickTask(
                 burstStartFrame = null
                 val d = lastBurstDiff
                 val distSame = dist != null && lastWalkDist != null && kotlin.math.abs(dist - lastWalkDist!!) <= 1
-                val blocked = d in 0f..BLOCK_DIFF || (distSame && d in 0f..(BLOCK_DIFF * 2))
+                if (distSame) distSameCount++ else if (dist != null) distSameCount = 0
+                val blocked = d in 0f..BLOCK_DIFF || (distSame && d in 0f..(BLOCK_DIFF * 2)) || distSameCount >= 2
                 if (blocked) {
                     stuck++
                     log("W: blocked? frameDiff=%.1f distSame=$distSame dist=$dist stuck=$stuck".format(d))
@@ -654,8 +656,9 @@ class OneClickTask(
             if (walks % 4 == 0) shot(f, "walk-$walks")
             // 卡住了：还有跳的额度就跳一下过去；没有额度（已经到店门口）就别跳，改成向右前/左前试探找门，卡得久了先后退一下再来
             val jumpMode = stuck >= 1 && jumpBudget > 0 && everOcr   // 还没见过店招就卡住，多半是朝向不对（比如对着纪念碑），不该跳
+            val nearCafe = lastSignCy < 0.30f
             val lateral = when {
-                stuck == 0 -> 0f
+                stuck == 0 -> if (nearCafe) 0.3f else 0f    // 离店很近时路线稍微偏右：门洞在店招中心偏右，直走会撞上门框左边的墙并触发攀爬
                 jumpMode -> if (stuck < 3) 0f else if ((stuck / 2) % 2 == 1) 0.7f else -0.7f
                 else -> if (((stuck - 1) / 2) % 2 == 0) 0.7f else -0.7f    // 门在店招中心附近偏右，先向右试
             }
@@ -671,7 +674,7 @@ class OneClickTask(
             lastWalkDist = dist
             lastWasWalk = true
             lastBurstWasJump = jumpMode
-            pushJoystick(lateral, if (lateral == 0f) -1f else -0.7f, 1200, jump = jumpMode)
+            pushJoystick(lateral, if (lateral == 0f) -1f else if (kotlin.math.abs(lateral) < 0.5f) -1f else -0.7f, 1200, jump = jumpMode)
             delay(300)
             burstStartFrame = f   // 走完这段后的画面直接用下一轮 look 取到的那帧来比，不再额外取一帧（每次取帧都会让预览/游戏卡一下）
         }
