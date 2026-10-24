@@ -364,17 +364,24 @@ class OneClickTask(
         return null
     }
 
-    /** 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖，画面内容向左移）来转镜头；松手后镜头还会滑行约 1 秒，调用方要等画面停稳。 */
-    private suspend fun dragCamera(dxNorm: Float) {
+    /**
+     * 在右侧空白区横向拖动 dxNorm（按屏幕宽度归一化，正=向右拖，画面内容向左移）来转镜头；松手后镜头还会滑行约 1 秒，调用方要等画面停稳。
+     * variant 0/1/2 是三种起点（高度、横向位置不同），上一种拖了没效果时换下一种重试。
+     */
+    private suspend fun dragCamera(dxNorm: Float, variant: Int = 0) {
         val d = dxNorm.coerceIn(-0.30f, 0.30f)
-        val x0 = if (d >= 0) CAM_MIN_X else CAM_MAX_X
-        val x1 = (x0 + d).coerceIn(CAM_MIN_X - 0.02f, CAM_MAX_X + 0.02f)
-        val y = CAM_Y * h
+        val v = variant.coerceIn(0, 2)
+        val startsPos = floatArrayOf(0.58f, 0.66f, 0.72f)    // 向右拖时的起点
+        val startsNeg = floatArrayOf(0.80f, 0.78f, 0.74f)    // 向左拖时的起点
+        val ys = floatArrayOf(0.42f, 0.30f, 0.52f)
+        val x0 = if (d >= 0) (0.84f - d).coerceIn(0.52f, startsPos[v]) else maxOf(startsNeg[v], 0.52f - d).coerceAtMost(0.84f)
+        val x1 = (x0 + d).coerceIn(0.50f, 0.86f)
+        val y = ys[v] * h
         val t0 = SystemClock.uptimeMillis()
-        if (!VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_DOWN, t0, x0 * w, y)) return
+        if (!VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_DOWN, t0, x0 * w, y)) { log("W: drag DOWN rejected"); return }
         try {
-            delay(40)
-            val n = 8
+            delay(60)
+            val n = 12
             for (i in 1..n) {
                 VirtualDisplayManager.touchEvent(displayId, MotionEvent.ACTION_MOVE, t0, (x0 + (x1 - x0) * i / n) * w, y)
                 delay(30)
@@ -461,6 +468,7 @@ class OneClickTask(
         var stuck = 0               // 连续几段“往前走了但任务距离没变”（被挡住了）
         var lastWalkDist: Int? = null
         var lastWasWalk = false
+        var spawnTries = 0
         var lastBurstDiff = -1f     // 最近一段走路前后两帧的画面差
         var lastBurstWasJump = false
         var jumpBudget = 2          // 最多靠跳翻过 2 处障碍（花坛矮墙、店门口低台）；到店门口后不再跳，免得对着墙跳触发攀爬
@@ -476,16 +484,31 @@ class OneClickTask(
             floatArrayOf(1f, 0f, 600f)
         )
 
-        /** 拖一次镜头，返回实测的画面平移（null=测不出，仅供日志参考）。 */
+        var lastTurnMoved = true    // 最近一次 turn() 之后画面是否真的变了（没变=拖动被游戏忽略了）
+
+        /** 拖一次镜头；拖完画面没变化（被游戏忽略）就换一种起点重试，最多 3 次。返回实测的画面平移（null=测不出，仅供日志参考）。 */
         suspend fun turn(before: Bitmap, dx: Float): Float? {
-            dragCamera(dx)
-            val after = waitStable(600, 3000) ?: return null
-            val s = FrameOps.shiftX(before, after)
-            if (s != null && kotlin.math.abs(dx) >= 0.04f && kotlin.math.abs(s) < 0.22f) {
+            var attempt = 0
+            var after: Bitmap? = null
+            while (true) {
+                dragCamera(dx, attempt)
+                after = waitStable(600, 3000)
+                val d = if (after != null) FrameOps.diff(before, after) else -1f
+                lastTurnMoved = d >= 3.0f
+                if (lastTurnMoved || attempt >= 2) {
+                    if (!lastTurnMoved) log("W: drag dx=%.3f still had no effect after ${attempt + 1} tries (diff=%.1f)".format(dx, d))
+                    break
+                }
+                log("W: drag dx=%.3f had no effect (diff=%.1f), retry with variant ${attempt + 1}".format(dx, d))
+                attempt++
+            }
+            val aft = after ?: return null
+            val s = FrameOps.shiftX(before, aft)
+            if (s != null && kotlin.math.abs(dx) >= 0.04f && kotlin.math.abs(s) < 0.22f && lastTurnMoved) {
                 val g = s / dx
                 if (g in -8.0f..-1.5f) gain = 0.5f * gain + 0.5f * g
             }
-            log("W: drag dx=%.3f measured shift=%s gain=%.2f".format(dx, s?.let { "%.3f".format(it) } ?: "n/a", gain))
+            log("W: drag dx=%.3f measured shift=%s moved=$lastTurnMoved gain=%.2f".format(dx, s?.let { "%.3f".format(it) } ?: "n/a", gain))
             return s
         }
 
@@ -567,7 +590,8 @@ class OneClickTask(
                 log("W: sign not visible at spawn, open-loop turn dx=$SPAWN_TURN then assume sign at cx=$SPAWN_SIGN_X")
                 if (!shotNoSign) { shotNoSign = true; shot(f, "walk-nosign") }
                 turn(f, SPAWN_TURN)
-                pos = SPAWN_SIGN_X
+                spawnTries++
+                if (lastTurnMoved || spawnTries >= 3) pos = SPAWN_SIGN_X
                 continue
             } else if (everOcr) {
                 lostCount++
@@ -575,7 +599,7 @@ class OneClickTask(
             pendingCx = if (sign != null) sign.cx else -1f
 
             // ---- 找不到店招：从没读到过且已走了几段 / 读到过但连续丢了几轮 → 转镜头扫一遍用 OCR 找 ----
-            if (stuck == 0 && !sweeping && ((!everOcr && walks >= 3) || (everOcr && lostCount >= 3))) {
+            if (!sweeping && ((!everOcr && (walks >= 3 || stuck >= 1)) || (stuck == 0 && everOcr && lostCount >= 3))) {
                 sweeping = true
                 sweepSteps = 0
                 log("W: sign lost (everOcr=$everOcr walks=$walks lost=$lostCount), sweep camera to find it again")
@@ -602,7 +626,7 @@ class OneClickTask(
                 val s = turn(f, dx)
                 pendingDx = dx
                 if (sign == null) pendingCx = -1f
-                pos = (pos + (s ?: (gain * dx))).coerceIn(0f, 1f)   // 没测出来就按 gain 预测；下一轮 OCR 读到会覆盖
+                if (lastTurnMoved) pos = (pos + (s ?: (gain * dx))).coerceIn(0f, 1f)   // 没测出来就按 gain 预测；下一轮 OCR 读到会覆盖；拖动被忽略就不改
                 continue
             }
 
@@ -616,7 +640,7 @@ class OneClickTask(
             walks++
             if (walks % 4 == 0) shot(f, "walk-$walks")
             // 卡住了：还有跳的额度就跳一下过去；没有额度（已经到店门口）就别跳，改成向右前/左前试探找门，卡得久了先后退一下再来
-            val jumpMode = stuck >= 1 && jumpBudget > 0
+            val jumpMode = stuck >= 1 && jumpBudget > 0 && everOcr   // 还没见过店招就卡住，多半是朝向不对（比如对着纪念碑），不该跳
             val lateral = when {
                 stuck == 0 -> 0f
                 jumpMode -> if (stuck < 3) 0f else if ((stuck / 2) % 2 == 1) 0.7f else -0.7f
