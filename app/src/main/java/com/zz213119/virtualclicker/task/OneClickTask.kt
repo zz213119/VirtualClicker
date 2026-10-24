@@ -528,7 +528,7 @@ class OneClickTask(
                 shot(f, "walk-arrived")
                 log("W: shop option found at (${opt.cx},${opt.cy}) after ${(now() - t0) / 1000}s walks=$walks")
                 onStatus("已到达店长特供柜台")
-                return YihuanShopTask.Outcome(true, "一键开刷：已到达柜台", "虚拟屏 #$displayId，已走到 ORIGEN 柜台，出现“店长特供”选项，后续点击进入并循环待接入。")
+                return YihuanShopTask.Outcome(true, "一键开刷：已到达柜台", "虚拟屏 #$displayId，已走到 ORIGEN 柜台，出现“店长特供”选项，接下来进入并自动刷 1-1。")
             }
 
             val inside = text.contains("库存") && text.contains("收入")

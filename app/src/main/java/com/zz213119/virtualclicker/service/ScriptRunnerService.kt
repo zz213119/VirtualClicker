@@ -288,35 +288,22 @@ class ScriptRunnerService : Service() {
                     val oc = com.zz213119.virtualclicker.task.OneClickTask(applicationContext) { text ->
                         updateTaskStatus(text, taskId, displayId)
                     }.run()
-                    ok = oc.ok
                     LogWriter.write("TASK OUTCOME", "ok=" + oc.ok + ";" + oc.title + ";" + oc.text)
-                    AlertNotifier.notify(applicationContext, oc.title, oc.text)
+                    if (!oc.ok) {
+                        AlertNotifier.notify(applicationContext, oc.title, oc.text)
+                        return@launch
+                    }
+                    // 已走到 ORIGEN 柜台、出现“店长特供”选项 → 接着跑和“开始自动刷”同一套 1-1 循环
+                    val did = VirtualDisplayManager.oneClickDisplayId
+                    if (did < 0) {
+                        AlertNotifier.notify(applicationContext, "一键开刷", "已到达柜台，但找不到虚拟屏，无法继续自动刷")
+                        return@launch
+                    }
+                    updateTaskStatus("已到达柜台，开始自动刷 1-1", taskId, displayId)
+                    ok = runYihuanShop(did, taskId)
                     return@launch
                 }
-                val size = VirtualDisplayManager.displaySize(displayId)
-                if (size == null) {
-                    LogWriter.write(
-                        "TASK FAILED",
-                        "displaySize=null：后端守护进程可能是旧版本（缺少 captureFrame），" +
-                            "请强制停止本应用并在 Shizuku 中重新授权后再试"
-                    )
-                    return@launch
-                }
-                if (com.zz213119.virtualclicker.core.Prefs.autoScreenOff(applicationContext)) {
-                    val off = VirtualDisplayManager.setScreenOffMode(true)
-                    LogWriter.write("SCREEN OFF", "auto screen-off ok=$off")
-                }
-                val outcome = YihuanShopTask(applicationContext, displayId) { text ->
-                    updateTaskStatus(text, taskId, displayId)
-                }.run()
-                ok = outcome.ok
-                LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
-                AlertNotifier.notify(applicationContext, outcome.title, outcome.text)
-                if (outcome.ok && com.zz213119.virtualclicker.core.Prefs.autoQuitGame(applicationContext)) {
-                    kotlinx.coroutines.delay(1500)
-                    val stopped = VirtualDisplayManager.stopLaunchedApp(displayId)
-                    LogWriter.write("AUTO QUIT GAME", "stopped=" + stopped)
-                }
+                ok = runYihuanShop(displayId, taskId)
             } catch (_: CancellationException) {
                 // Normal stop/restart path.
             } catch (t: Throwable) {
@@ -338,6 +325,34 @@ class ScriptRunnerService : Service() {
                 }
             }
         }
+    }
+
+    /** 店长特供 1-1 自动刷（“开始自动刷”和“一键开刷”到达柜台后共用）。返回是否正常结束。 */
+    private suspend fun runYihuanShop(displayId: Int, taskId: String): Boolean {
+        val size = VirtualDisplayManager.displaySize(displayId)
+        if (size == null) {
+            LogWriter.write(
+                "TASK FAILED",
+                "displaySize=null：后端守护进程可能是旧版本（缺少 captureFrame），" +
+                    "请强制停止本应用并在 Shizuku 中重新授权后再试"
+            )
+            return false
+        }
+        if (com.zz213119.virtualclicker.core.Prefs.autoScreenOff(applicationContext)) {
+            val off = VirtualDisplayManager.setScreenOffMode(true)
+            LogWriter.write("SCREEN OFF", "auto screen-off ok=$off")
+        }
+        val outcome = YihuanShopTask(applicationContext, displayId) { text ->
+            updateTaskStatus(text, taskId, displayId)
+        }.run()
+        LogWriter.write("TASK OUTCOME", "ok=" + outcome.ok + ";" + outcome.title + ";" + outcome.text)
+        AlertNotifier.notify(applicationContext, outcome.title, outcome.text)
+        if (outcome.ok && com.zz213119.virtualclicker.core.Prefs.autoQuitGame(applicationContext)) {
+            kotlinx.coroutines.delay(1500)
+            val stopped = VirtualDisplayManager.stopLaunchedApp(displayId)
+            LogWriter.write("AUTO QUIT GAME", "stopped=" + stopped)
+        }
+        return outcome.ok
     }
 
     private suspend fun executeAction(displayId: Int, action: ScriptAction): Boolean {
