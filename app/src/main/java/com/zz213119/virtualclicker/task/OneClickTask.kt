@@ -56,7 +56,7 @@ class OneClickTask(
         private const val JUMP_X = 0.909f          // 右下“跳跃”键（跑步小人带箭头）
         private const val JUMP_Y = 0.725f
         private const val BLOCK_DIFF = 6.0f        // 走一段前后两帧的平均亮度差低于它，认为没前进（实际数值请看日志 frameDiff）
-        private const val WALK_TIMEOUT_MS = 150_000L
+        private const val WALK_TIMEOUT_MS = 240_000L
         private const val MAX_WALKS = 30          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
         private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
         private val SIGN = Regex("[O0D]RIG|RIGE[NM]|ORIGE|CAFE|[I1L]GE[NMŃ]")
@@ -475,17 +475,17 @@ class OneClickTask(
         var lastSignCy = 1f         // 最近一次读到店招的纵向位置，越小说明离店越近
         var pendingCx = -1f         // 刚做完转镜头、还没走路时，转之前 OCR 读到的店招位置，用来校准 gain
         var pendingDx = 0f
-        // 进店后“店长特供”选项要往左走才会出现（实测），所以先向左前、向左试探，再回到正前方，最后才试右边
-        val insidePattern = arrayOf(
-            floatArrayOf(-0.7f, -0.7f, 700f),
-            floatArrayOf(-1f, 0f, 600f),
-            floatArrayOf(-0.7f, -0.7f, 700f),
-            floatArrayOf(0f, -1f, 600f),
-            floatArrayOf(-1f, 0f, 700f),
-            floatArrayOf(-0.5f, -0.9f, 800f),
-            floatArrayOf(0.7f, -0.7f, 600f),
-            floatArrayOf(1f, 0f, 500f)
-        )
+        // 进店后“店长特供”选项要往左走才会出现（实测）。选项只在靠近柜台的一小段距离内显示，跑过去只会闪 1~2 帧，
+        // 所以每一步只走 0.3 秒左右（约 1~2 米）就停下看一眼；停在范围内选项会一直显示，不会漏掉。
+        val insidePattern = ArrayList<FloatArray>().apply {
+            repeat(3) { add(floatArrayOf(-0.7f, -0.7f, 300f)) }
+            repeat(3) { add(floatArrayOf(-1f, 0f, 300f)) }
+            repeat(2) { add(floatArrayOf(0f, -1f, 300f)) }
+            repeat(3) { add(floatArrayOf(-0.5f, -0.9f, 300f)) }
+            repeat(2) { add(floatArrayOf(-1f, 0f, 300f)) }
+            repeat(2) { add(floatArrayOf(0.7f, -0.7f, 300f)) }
+            repeat(2) { add(floatArrayOf(1f, 0f, 300f)) }
+        }
 
         var lastTurnMoved = true    // 最近一次 turn() 之后画面是否真的变了（没变=拖动被游戏忽略了）
 
@@ -566,7 +566,7 @@ class OneClickTask(
             // ---- 店内：没看到选项，按一组方向小步试探柜台 ----
             if (inside && sign == null) {
                 if (!shotInside) { shotInside = true; shot(f, "walk-inside") }
-                if (insideSteps >= 32) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
+                if (insideSteps >= 60) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
                 val p = insidePattern[insideSteps % insidePattern.size]
                 log("W: inside step #$insideSteps dir=(${p[0]},${p[1]}) ${p[2].toLong()}ms")
                 pushJoystick(p[0], p[1], p[2].toLong())
