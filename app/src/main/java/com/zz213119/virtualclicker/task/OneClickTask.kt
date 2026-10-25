@@ -614,7 +614,7 @@ class OneClickTask(
             pendingCx = if (sign != null) sign.cx else -1f
 
             // ---- 找不到店招：从没读到过且已走了几段 / 读到过但连续丢了几轮 → 转镜头扫一遍用 OCR 找 ----
-            if (!sweeping && ((!everOcr && (walks >= 3 || stuck >= 1)) || (stuck == 0 && everOcr && lostCount >= 3))) {
+            if (!sweeping && ((!everOcr && (walks >= 3 || stuck >= 1)) || (stuck == 0 && everOcr && lostCount >= 3 && lastSignCy >= 0.30f))) {   // 已经走到店门口附近（店招在画面上方、被门框/镜头遮住）就别再转镜头找了，继续往里走
                 sweeping = true
                 sweepSteps = 0
                 log("W: sign lost (everOcr=$everOcr walks=$walks lost=$lostCount), sweep camera to find it again")
