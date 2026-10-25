@@ -56,6 +56,7 @@ class OneClickTask(
         private const val JUMP_X = 0.909f          // 右下“跳跃”键（跑步小人带箭头）
         private const val JUMP_Y = 0.725f
         private const val BLOCK_DIFF = 6.0f        // 走一段前后两帧的平均亮度差低于它，认为没前进（实际数值请看日志 frameDiff）
+        private const val CLIMB_SCORE = 0.72f      // 识别“爬墙时右下角下落键”的最低相似度（离线对比：正常画面最高 0.69，爬墙时 0.83 以上）
         private const val WALK_TIMEOUT_MS = 240_000L
         private const val MAX_WALKS = 30          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
         private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
@@ -496,6 +497,9 @@ class OneClickTask(
             log("W: scene not ready yet (black/loading), keep waiting")
         }
 
+        val climbT = asset("climb_drop.png")
+        val roiClimb = floatArrayOf(0.80f, 0.62f, 0.98f, 0.97f)
+        var climbRecoveries = 0
         val t0 = now()
         var gain = GAIN0            // 拖动 1 个屏宽 → 画面内容横向移动多少个屏宽（负=向右拖内容向左移）；转镜头后用实测平移/前后两次读数校准
         var pos = -1f               // 店招在画面里的横向位置估计（OCR 读到就用 OCR，否则用初值+转镜头预测）
@@ -583,6 +587,26 @@ class OneClickTask(
             log("W: minimap route cyan=${mm.pixels} angle=" + (mm.angle?.let { "%.0f".format(it) } ?: "none") + " nearest=%.0f".format(mm.nearest))
             log("W: look walks=$walks inside=$inside sign=" + (sign?.let { "(%.3f,%.3f)".format(it.cx, it.cy) } ?: "none") +
                 " pos=%.3f lost=$lostCount".format(pos))
+
+            // ---- 爬墙检测：撞到墙会自动进入攀爬，这时右下角变成两个攀爬键，下面那个是“松手下落”。识别到就点它下来，再往右前挪开 ----
+            if (!inside) {
+                val cm = IconFinder.find(f, climbT, IconFinder.Mode.WHITE, roiClimb)
+                if (cm != null && cm.score >= CLIMB_SCORE && cm.ny > 0.80f) {
+                    climbRecoveries++
+                    log("W: climbing detected score=%.2f at (%.3f,%.3f), tap drop #%d".format(cm.score, cm.nx, cm.ny, climbRecoveries))
+                    if (climbRecoveries == 1) shot(f, "walk-climb")
+                    if (climbRecoveries > 6) return fail("反复爬墙下不来（已尝试 $climbRecoveries 次）")
+                    tap(cm.nx, cm.ny)
+                    delay(1500)
+                    pushJoystick(0.7f, -0.7f, 500)    // 落地后向右前挪开，避免再次顶着同一处墙
+                    stuck = 0
+                    distSameCount = 0
+                    lastWasWalk = false
+                    burstStartFrame = null
+                    delay(300)
+                    continue
+                }
+            }
 
             // ---- 卡住检测：上一步是往前走，但画面几乎没变（被矮墙/长椅挡住）→ 后面改成边走边跳 ----
             // 主要看走路前后两帧的差：真在跑，整个场景都在变；顶着墙，只剩角色原地动画。
