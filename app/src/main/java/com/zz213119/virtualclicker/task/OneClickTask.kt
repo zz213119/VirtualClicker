@@ -256,6 +256,7 @@ class OneClickTask(
         val tD = now()
         var markerTaps = 0
         var teleportTapped = false
+        var tracked = false
         while (!teleportTapped) {
             if (now() - tD > 120_000 || markerTaps > 8) return fail("没能在地图上选中传送点并点到“传送”")
             delay(1000)
@@ -269,6 +270,16 @@ class OneClickTask(
                 tap(go.cx, go.cy)
                 teleportTapped = true
                 break
+            }
+            // 地图上先“追踪”一咖舍：追踪后小地图上会出现一条指向咖啡店的青蓝色虚线（供后面走路用，目前只记录）
+            val trackBtn = lines.firstOrNull { it.text.trim() == "追踪" }
+            if (!tracked && trackBtn != null && !text.contains("取消追踪")) {
+                tracked = true
+                log("D: tap 追踪 (${trackBtn.cx},${trackBtn.cy})")
+                shot(f, "nav-track")
+                tap(trackBtn.cx, trackBtn.cy)
+                delay(1500)
+                continue
             }
             val m = IconFinder.find(f, markerT, IconFinder.Mode.RED, roiMarker)
             log("D: marker match=" + (m?.let { "%.2f/%.2f at (%.3f,%.3f)".format(it.score, it.second, it.nx, it.ny) } ?: "none"))
@@ -541,6 +552,8 @@ class OneClickTask(
 
             val inside = text.contains("库存") && text.contains("收入")
             val sign = if (inside) null else ocrSign(f, lines, walks >= 2 || sweeping || everOcr)
+            val mm = MinimapRoute.analyze(f)
+            log("W: minimap route cyan=${mm.pixels} angle=" + (mm.angle?.let { "%.0f".format(it) } ?: "none") + " nearest=%.0f".format(mm.nearest))
             log("W: look walks=$walks inside=$inside sign=" + (sign?.let { "(%.3f,%.3f)".format(it.cx, it.cy) } ?: "none") +
                 " pos=%.3f lost=$lostCount".format(pos))
 
