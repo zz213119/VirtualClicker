@@ -453,8 +453,31 @@ class OneClickTask(
         return prev
     }
 
-    private fun findShopOption(lines: List<GameOcr.Line>): GameOcr.Line? =
-        lines.firstOrNull { it.text.contains("店长特供") && it.cx in 0.50f..0.80f && it.cy in 0.30f..0.70f }
+    /** 店内的交互选项：“店长特供”和“管理店铺”总是一起出现，任意一个读到都算（“管理店铺”在“店长特供”正下方约 0.06）。 */
+    private fun findShopOption(lines: List<GameOcr.Line>): GameOcr.Line? {
+        lines.firstOrNull { it.text.contains("店长特供") && it.cx in 0.50f..0.85f && it.cy in 0.25f..0.75f }?.let { return it }
+        val mg = lines.firstOrNull { it.text.contains("管理店铺") && it.cx in 0.50f..0.85f && it.cy in 0.30f..0.80f }
+        return mg?.let { GameOcr.Line("店长特供(由管理店铺推断)", it.cx, it.cy - 0.06f) }
+    }
+
+    /** 店内专用：选项是粉底白字的小按钮，整图识别经常漏，把右侧中间一块放大后单独识别。返回整图归一化坐标。 */
+    private fun ocrOptionCrop(f: Bitmap): GameOcr.Line? {
+        val x0n = 0.45f
+        val x1n = 0.95f
+        val y0n = 0.25f
+        val y1n = 0.75f
+        val x0 = (x0n * f.width).toInt()
+        val x1 = (x1n * f.width).toInt().coerceAtMost(f.width)
+        val y0 = (y0n * f.height).toInt()
+        val y1 = (y1n * f.height).toInt().coerceAtMost(f.height)
+        val up = runCatching {
+            val crop = Bitmap.createBitmap(f, x0, y0, x1 - x0, y1 - y0)
+            Bitmap.createScaledBitmap(crop, (crop.width * 2.5f).toInt(), (crop.height * 2.5f).toInt(), true)
+        }.getOrNull() ?: return null
+        val ls = runCatching { GameOcr.read(up) }.getOrDefault(emptyList())
+            .map { GameOcr.Line(it.text, x0n + it.cx * (x1n - x0n), y0n + it.cy * (y1n - y0n)) }
+        return findShopOption(ls)
+    }
 
     private suspend fun walkToShop(): YihuanShopTask.Outcome {
         onStatus("前往店长特供…")
@@ -542,7 +565,8 @@ class OneClickTask(
             val text = lines.joinToString(" ") { it.text }
 
             // ---- 终点：店内出现“店长特供”交互选项 ----
-            val opt = findShopOption(lines)
+            val inside = text.contains("库存") && text.contains("收入")
+            val opt = findShopOption(lines) ?: (if (inside) ocrOptionCrop(f) else null)
             if (opt != null) {
                 shot(f, "walk-arrived")
                 log("W: shop option found at (${opt.cx},${opt.cy}) after ${(now() - t0) / 1000}s walks=$walks")
@@ -550,7 +574,6 @@ class OneClickTask(
                 return YihuanShopTask.Outcome(true, "一键开刷：已到达柜台", "虚拟屏 #$displayId，已走到 ORIGEN 柜台，出现“店长特供”选项，接下来进入并自动刷 1-1。")
             }
 
-            val inside = text.contains("库存") && text.contains("收入")
             val sign = if (inside) null else ocrSign(f, lines, walks >= 2 || sweeping || everOcr)
             val mm = MinimapRoute.analyze(f)
             log("W: minimap route cyan=${mm.pixels} angle=" + (mm.angle?.let { "%.0f".format(it) } ?: "none") + " nearest=%.0f".format(mm.nearest))
@@ -591,6 +614,7 @@ class OneClickTask(
                 if (insideSteps >= 60) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
                 val p = insidePattern[insideSteps % insidePattern.size]
                 log("W: inside step #$insideSteps dir=(${p[0]},${p[1]}) ${p[2].toLong()}ms")
+                if (insideSteps % 5 == 0) logOcr("W-inside", lines)
                 pushJoystick(p[0], p[1], p[2].toLong())
                 insideSteps++
                 delay(300)
