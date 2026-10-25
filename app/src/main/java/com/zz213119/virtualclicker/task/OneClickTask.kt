@@ -272,8 +272,12 @@ class OneClickTask(
                 break
             }
             // 地图上先“追踪”一咖舍：追踪后小地图上会出现一条指向咖啡店的青蓝色虚线（供后面走路用，目前只记录）
-            val trackBtn = lines.firstOrNull { it.text.trim() == "追踪" }
-            if (!tracked && trackBtn != null && !text.contains("取消追踪")) {
+            // 日志里文字识别把“追踪”读成了“追腺”，所以不能精确匹配：按“以追开头、很短、在右下角卡片按钮的位置”来认；已追踪时按钮是“取消追踪”，要排除
+            val trackBtn = lines.firstOrNull { l ->
+                val t = l.text.trim()
+                !t.contains("取消") && t.length <= 4 && t.startsWith("追") && l.cx > 0.6f && l.cy > 0.7f
+            }
+            if (!tracked && trackBtn != null && !text.contains("取消")) {
                 tracked = true
                 log("D: tap 追踪 (${trackBtn.cx},${trackBtn.cy})")
                 shot(f, "nav-track")
