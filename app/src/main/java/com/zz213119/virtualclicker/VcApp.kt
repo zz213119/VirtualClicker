@@ -5,6 +5,11 @@ import android.app.Application
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import com.zz213119.virtualclicker.service.LogWriter
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -27,7 +32,7 @@ class VcApp : Application() {
                 val sw = StringWriter()
                 e.printStackTrace(PrintWriter(sw))
                 val rt = Runtime.getRuntime()
-                LogWriter.write(
+                LogWriter.writeSync(
                     "CRASH",
                     "thread=${t.name}\nheap used=${(rt.totalMemory() - rt.freeMemory()) / 1048576}MB max=${rt.maxMemory() / 1048576}MB\n$sw"
                 )
@@ -35,7 +40,44 @@ class VcApp : Application() {
             previous?.uncaughtException(t, e)
         }
         runCatching { logLastExit() }
+        startHangWatchdog()
     }
+
+    /**
+     * 主线程卡死监视：每 0.5 秒往主线程投一个心跳，超过 2 秒没执行就把主线程当前的堆栈写进日志（2/4/6 秒各一次），
+     * 恢复后再记一行持续时长。这样“界面突然卡死”时，日志里能直接看到主线程卡在哪一行。
+     */
+    private fun startHangWatchdog() {
+        val main = Handler(Looper.getMainLooper())
+        val beat = AtomicLong(SystemClock.uptimeMillis())
+        val pending = AtomicBoolean(false)
+        Thread({
+            var inHang = false
+            var dumped = 0
+            var hangFrom = 0L
+            while (true) {
+                if (!pending.getAndSet(true)) {
+                    main.post { beat.set(SystemClock.uptimeMillis()); pending.set(false) }
+                }
+                try { Thread.sleep(500) } catch (_: InterruptedException) { return@Thread }
+                val lag = SystemClock.uptimeMillis() - beat.get()
+                if (lag > 2000) {
+                    if (!inHang) { inHang = true; dumped = 0; hangFrom = beat.get() }
+                    if (dumped < 3 && lag > 2000L * (dumped + 1)) {
+                        dumped++
+                        runCatching {
+                            val st = Looper.getMainLooper().thread.stackTrace.take(45).joinToString("\n") { "    at $it" }
+                            LogWriter.write("UI HANG", "main thread blocked ${lag}ms (dump #$dumped)\n$st")
+                        }
+                    }
+                } else if (inHang) {
+                    inHang = false
+                    LogWriter.write("UI HANG", "main thread recovered after about ${SystemClock.uptimeMillis() - hangFrom}ms")
+                }
+            }
+        }, "vc-hang-watchdog").apply { isDaemon = true; start() }
+    }
+
 
     private fun logLastExit() {
         LogWriter.write("PROCESS START", "pid=${android.os.Process.myPid()} build=${BuildConfig.VERSION_NAME}")
