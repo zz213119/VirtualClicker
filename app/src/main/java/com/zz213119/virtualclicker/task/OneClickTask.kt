@@ -57,6 +57,8 @@ class OneClickTask(
         private const val JUMP_Y = 0.725f
         private const val BLOCK_DIFF = 6.0f        // 走一段前后两帧的平均亮度差低于它，认为没前进（实际数值请看日志 frameDiff）
         private const val CLIMB_SCORE = 0.72f      // 识别“爬墙时右下角下落键”的最低相似度（离线对比：正常画面最高 0.69，爬墙时 0.83 以上）
+        private val DOOR_OFFSETS = intArrayOf(-1, 1, -2, 2, -3, 3, -4, 4, -5, 5)   // 找门：相对当前位置依次向左/右横移的格数（每格约 1.2 米），逐步加大
+        private const val DOOR_UNIT_MS = 500L
         private const val WALK_TIMEOUT_MS = 240_000L
         private const val MAX_WALKS = 30          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
         private val SWEEP_SEQ = floatArrayOf(0.06f, -0.12f, 0.18f, -0.24f, 0.30f, -0.30f)   // 找店招时的转镜头顺序：围绕当前朝向左右交替、幅度逐步加大（镜头很灵敏，0.06≈24°）
@@ -565,6 +567,35 @@ class OneClickTask(
             return s
         }
 
+        var doorAttempt = 0
+        var doorOffset = 0
+
+        /**
+         * 店门口找门：门的位置相对店招不固定（实测有时在左、有时在右），顶着墙/爬墙时，
+         * 后退离墙 → 横移到下一个位置（左1、右1、左2、右2…逐步加大）→ 再向前走，直到进店。
+         * 返回 false 表示所有位置都试过了。
+         */
+        suspend fun doorStep(): Boolean {
+            if (doorAttempt >= DOOR_OFFSETS.size) return false
+            val target = DOOR_OFFSETS[doorAttempt]
+            val delta = target - doorOffset
+            doorAttempt++
+            log("W: door search #$doorAttempt: back off, strafe ${if (delta < 0) "left" else "right"} ${kotlin.math.abs(delta)} units (offset $doorOffset -> $target), then walk in")
+            onStatus("找店门…")
+            pushJoystick(0f, 1f, 800)                                                    // 后退离墙（爬着墙时往下退也能下来）
+            delay(200)
+            pushJoystick(if (delta < 0) -1f else 1f, 0f, kotlin.math.abs(delta) * DOOR_UNIT_MS)   // 横移
+            delay(200)
+            doorOffset = target
+            pushJoystick(0f, -1f, 1600)                                                  // 再向前走进去
+            stuck = 0
+            distSameCount = 0
+            lastWasWalk = false
+            burstStartFrame = null
+            delay(300)
+            return true
+        }
+
         while (true) {
             if (now() - t0 > WALK_TIMEOUT_MS) return fail("传送后 ${WALK_TIMEOUT_MS / 1000} 秒内没有走到店长特供柜台")
             val lk = look()
@@ -595,15 +626,20 @@ class OneClickTask(
                     climbRecoveries++
                     log("W: climbing detected score=%.2f at (%.3f,%.3f), tap drop #%d".format(cm.score, cm.nx, cm.ny, climbRecoveries))
                     if (climbRecoveries == 1) shot(f, "walk-climb")
-                    if (climbRecoveries > 6) return fail("反复爬墙下不来（已尝试 $climbRecoveries 次）")
+                    if (climbRecoveries > 14) return fail("反复爬墙下不来（已尝试 $climbRecoveries 次）")
                     tap(cm.nx, cm.ny)
-                    delay(1500)
-                    pushJoystick(0.7f, -0.7f, 500)    // 落地后向右前挪开，避免再次顶着同一处墙
-                    stuck = 0
-                    distSameCount = 0
-                    lastWasWalk = false
-                    burstStartFrame = null
-                    delay(300)
+                    delay(1200)
+                    if (lastSignCy < 0.30f) {
+                        // 已在店门口附近：说明走偏撞上了门旁边的墙，不是继续往右前顶，而是系统地换位置找门
+                        if (!doorStep()) return fail("爬墙后换了 ${DOOR_OFFSETS.size} 个位置也没找到店门")
+                    } else {
+                        pushJoystick(0f, 1f, 700)     // 落地后先后退离开墙，别再顶着同一处
+                        stuck = 0
+                        distSameCount = 0
+                        lastWasWalk = false
+                        burstStartFrame = null
+                        delay(300)
+                    }
                     continue
                 }
             }
@@ -723,9 +759,13 @@ class OneClickTask(
             val jumpMode = stuck >= 1 && jumpBudget > 0 && everOcr   // 还没见过店招就卡住，多半是朝向不对（比如对着纪念碑），不该跳
             val nearCafe = lastSignCy < 0.30f
             val lateral = when {
-                stuck == 0 -> if (nearCafe) 0.3f else 0f    // 离店很近时路线稍微偏右：门洞在店招中心偏右，直走会撞上门框左边的墙并触发攀爬
+                stuck == 0 -> 0f
                 jumpMode -> if (stuck < 3) 0f else if ((stuck / 2) % 2 == 1) 0.7f else -0.7f
                 else -> if (((stuck - 1) / 2) % 2 == 0) 0.7f else -0.7f    // 门在店招中心附近偏右，先向右试
+            }
+            if (!jumpMode && nearCafe && stuck >= 1) {
+                if (!doorStep()) return fail("在店门口顶着墙，换了 ${DOOR_OFFSETS.size} 个位置也没找到店门")
+                continue
             }
             if (!jumpMode && stuck >= 5 && stuck % 5 == 0) {
                 log("W: stuck=$stuck, back off a bit")
