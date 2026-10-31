@@ -193,7 +193,7 @@ class AiSession(context: Context) {
         toolDefs().forEach { t -> put(JSONObject().put("name", t.name).put("description", t.desc).put("input_schema", schema(t))) }
     }
 
-    private fun maxRounds() = if (Prefs.aiControl(ctx)) 15 else 6
+    private fun maxRounds() = AiConfig.maxRounds(ctx)
 
     private fun runTool(name: String, args: JSONObject, displayId: Int): String {
         if (stopFlag) return "用户已停止。"
@@ -202,7 +202,8 @@ class AiSession(context: Context) {
             TOOL_READ -> readScreen(displayId)
             "tap", "long_press", "swipe", "wait" -> {
                 if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏（设置里的“允许 AI 操作虚拟屏”是关闭的）。"
-                if (++actionCount > MAX_ACTIONS) return "已达到单次提问的操作上限（$MAX_ACTIONS 次），请让用户确认后再继续。"
+                val limit = AiConfig.maxActions(ctx)
+                if (++actionCount > limit) return "已达到单次提问的操作上限（$limit 次），请让用户确认后再继续。"
                 act(name, args, displayId)
             }
             else -> "未知工具：$name"
@@ -293,7 +294,6 @@ class AiSession(context: Context) {
     }
 
     companion object {
-        private const val MAX_ACTIONS = 40
         private const val TOOL_READ = "read_screen_text"
         private const val TOOL_READ_DESC =
             "读取虚拟屏当前画面上的文字（OCR）。返回每行文字及其在画面中的归一化坐标 (x,y)：x 0=最左 1=最右，y 0=最上 1=最下。只读。"

@@ -27,10 +27,15 @@ object AiConfig {
     fun model(c: Context): String = sp(c).getString("model", "") ?: ""
     fun systemPrompt(c: Context): String = sp(c).getString("system_prompt", "") ?: ""
     fun sendScreenshot(c: Context): Boolean = sp(c).getBoolean("send_screenshot", false)
+    /** 单次提问最多执行多少次操作（点击/长按/滑动/等待），防止 AI 失控一直点。 */
+    fun maxActions(c: Context): Int = sp(c).getInt("max_actions", 40).coerceIn(1, 1000)
+    /** 单次提问最多连续调用几轮工具（每轮可包含多个操作）。 */
+    fun maxRounds(c: Context): Int = sp(c).getInt("max_rounds", 15).coerceIn(1, 200)
 
     fun save(
         c: Context, format: String, baseUrl: String, model: String,
-        systemPrompt: String, sendScreenshot: Boolean
+        systemPrompt: String, sendScreenshot: Boolean,
+        maxActions: Int = maxActions(c), maxRounds: Int = maxRounds(c)
     ) {
         sp(c).edit()
             .putString("format", format)
@@ -38,6 +43,8 @@ object AiConfig {
             .putString("model", model.trim())
             .putString("system_prompt", systemPrompt)
             .putBoolean("send_screenshot", sendScreenshot)
+            .putInt("max_actions", maxActions.coerceIn(1, 1000))
+            .putInt("max_rounds", maxRounds.coerceIn(1, 200))
             .apply()
     }
 
