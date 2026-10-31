@@ -200,7 +200,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="AI 助手（只读虚拟屏）" />
+                    android:text="AI 助手（仅限虚拟屏）" />
 
                 <Button
                     android:id="@+id/aiConfigButton"

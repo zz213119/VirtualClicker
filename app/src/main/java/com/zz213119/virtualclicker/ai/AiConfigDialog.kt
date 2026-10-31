@@ -54,7 +54,7 @@ object AiConfigDialog {
             textSize = 13f
         }
         val note = TextView(context).apply {
-            text = "说明：只读取虚拟屏里的内容，不读手机本体屏幕，也不会点击或操作；密钥加密保存在本机；" +
+            text = "说明：只作用于虚拟屏里的内容，不读也不碰手机本体屏幕；是否允许 AI 点击/滑动由设置页的另一个开关决定（默认只读）；密钥加密保存在本机；" +
                 "提问时，识别出的文字（和可选的截图）会发送到你填写的服务商。接口地址需为 https。"
             textSize = 11f
             setPadding(0, px(10), 0, 0)

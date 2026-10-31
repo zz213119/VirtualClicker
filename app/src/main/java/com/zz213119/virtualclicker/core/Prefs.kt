@@ -42,6 +42,8 @@ object Prefs {
     fun autoScreenOff(c: Context) = sp(c).getBoolean("auto_screen_off", false)
     /** AI 助手（实验）：默认关闭。开启后主页虚拟屏下方出现对话框，只读取虚拟屏内的应用。 */
     fun aiEnabled(c: Context) = sp(c).getBoolean("ai_enabled", false)
+    /** 允许 AI 操作虚拟屏（点击/长按/滑动）：单独的开关，默认关闭；关闭时 AI 只能读取画面文字。 */
+    fun aiControl(c: Context) = sp(c).getBoolean("ai_control", false)
     fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", true)
 
     fun setBool(c: Context, key: String, value: Boolean) =

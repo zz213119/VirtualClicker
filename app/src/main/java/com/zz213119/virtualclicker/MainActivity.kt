@@ -1274,13 +1274,20 @@ class MainActivity : AppCompatActivity() {
         }
         config.setOnClickListener { com.zz213119.virtualclicker.ai.AiConfigDialog.show(this) }
         clear.setOnClickListener {
+            aiSession.stop()
             aiJob?.cancel()
             aiSession.clear()
             log.text = ""
             status.text = ""
-            send.isEnabled = true
+            send.text = "发送"
         }
         send.setOnClickListener {
+            // 正在回答/操作时，这个按钮变成“停止”
+            if (aiJob?.isActive == true) {
+                aiSession.stop()
+                status.text = "正在停止…"
+                return@setOnClickListener
+            }
             val text = input.text.toString().trim()
             if (text.isEmpty()) return@setOnClickListener
             if (!com.zz213119.virtualclicker.ai.AiConfig.isReady(this)) {
@@ -1291,14 +1298,21 @@ class MainActivity : AppCompatActivity() {
             val did = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
             append("你：$text\n")
             input.setText("")
-            send.isEnabled = false
+            send.text = "停止"
             status.text = "思考中…"
             aiJob = lifecycleScope.launch {
-                val reply = aiSession.ask(text, did) { st -> runOnUiThread { status.text = st } }
-                append("AI：$reply\n\n")
-                status.text = ""
-                send.isEnabled = true
+                try {
+                    val reply = aiSession.ask(text, did, { a -> runOnUiThread { append("  · $a\n") } }) { st ->
+                        runOnUiThread { status.text = st }
+                    }
+                    append("AI：$reply\n\n")
+                } finally {
+                    status.text = ""
+                    send.text = "发送"
+                }
             }
+        }
+    }
         }
     }
 

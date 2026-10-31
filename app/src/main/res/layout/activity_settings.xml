@@ -372,6 +372,16 @@
             android:textColor="@color/vc_text"
             android:textSize="14sp" />
 
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchAiControl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:minHeight="44dp"
+            android:text="允许 AI 操作虚拟屏（点击 / 长按 / 滑动，默认关闭）：只限虚拟屏，可随时点“停止”"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
         <Button
             android:id="@+id/aiConfigSettingsButton"
             android:layout_width="match_parent"

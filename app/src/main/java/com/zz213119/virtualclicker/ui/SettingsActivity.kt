@@ -108,6 +108,22 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+        findViewById<SwitchCompat>(R.id.switchAiControl).apply {
+            isChecked = Prefs.aiControl(this@SettingsActivity)
+            setOnCheckedChangeListener { v, checked ->
+                if (!checked) {
+                    Prefs.setBool(this@SettingsActivity, "ai_control", false)
+                } else if (!Prefs.aiControl(this@SettingsActivity)) {
+                    android.app.AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("允许 AI 操作虚拟屏？")
+                        .setMessage("开启后，AI 可以在你的虚拟屏里点击、长按、滑动，并会自己决定每一步。\n只作用于虚拟屏，不会碰手机本体屏幕；对话框里每一步操作都会显示出来，可随时点“停止”。\nAI 可能误操作，请不要在虚拟屏里放着支付、转账等账号类应用时开启。")
+                        .setPositiveButton("允许") { _, _ -> Prefs.setBool(this@SettingsActivity, "ai_control", true) }
+                        .setNegativeButton("取消") { _, _ -> v.post { (v as SwitchCompat).isChecked = false } }
+                        .setOnCancelListener { v.post { (v as SwitchCompat).isChecked = false } }
+                        .show()
+                }
+            }
+        }
         findViewById<android.widget.Button>(R.id.aiConfigSettingsButton).setOnClickListener {
             com.zz213119.virtualclicker.ai.AiConfigDialog.show(this)
         }
