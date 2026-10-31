@@ -54,8 +54,15 @@ object AiConfigDialog {
             textSize = 13f
         }
         val numType = InputType.TYPE_CLASS_NUMBER
-        val maxActions = edit("单次提问最多操作次数（1~1000）", AiConfig.maxActions(context).toString(), numType)
-        val maxRounds = edit("单次提问最多连续调用几轮（1~200）", AiConfig.maxRounds(context).toString(), numType)
+        val maxActions = edit("单次提问最多操作次数，0 = 不限制", AiConfig.maxActions(context).toString(), numType)
+        val maxRounds = edit("单次提问最多连续调用几轮，0 = 不限制", AiConfig.maxRounds(context).toString(), numType)
+        val ctxWindow = edit("模型上下文窗口（token），0 = 不自动压缩", AiConfig.ctxWindow(context).toString(), numType)
+        val compressPct = edit("用到窗口的百分之几时自动压缩（10~95）", AiConfig.compressPct(context).toString(), numType)
+        val notify = CheckBox(context).apply {
+            text = "AI 任务结束或中断时发通知"
+            isChecked = AiConfig.notifyDone(context)
+            textSize = 13f
+        }
         val note = TextView(context).apply {
             text = "说明：只作用于虚拟屏里的内容，不读也不碰手机本体屏幕；是否允许 AI 点击/滑动由设置页的另一个开关决定（默认只读）；密钥加密保存在本机；" +
                 "提问时，识别出的文字（和可选的截图）会发送到你填写的服务商。接口地址需为 https。"
@@ -69,8 +76,11 @@ object AiConfigDialog {
         box.addView(label("模型")); box.addView(model)
         box.addView(label("系统提示词")); box.addView(sys)
         box.addView(shot)
-        box.addView(label("单次提问的操作上限（点击/长按/滑动/等待的总次数）")); box.addView(maxActions)
-        box.addView(label("单次提问最多连续调用工具的轮数")); box.addView(maxRounds)
+        box.addView(label("单次提问的操作上限（点击/长按/滑动/等待的总次数，0 = 不限制）")); box.addView(maxActions)
+        box.addView(label("单次提问最多连续调用工具的轮数（0 = 不限制）")); box.addView(maxRounds)
+        box.addView(label("模型上下文窗口（token，按你用的模型填；0 = 不自动压缩）")); box.addView(ctxWindow)
+        box.addView(label("自动压缩的触发比例（%，默认 75）")); box.addView(compressPct)
+        box.addView(notify)
         box.addView(note)
 
         val scroll = ScrollView(context).apply {
@@ -85,7 +95,10 @@ object AiConfigDialog {
                     if (spinner.selectedItemPosition == 1) AiConfig.FORMAT_ANTHROPIC else AiConfig.FORMAT_OPENAI,
                     base.text.toString(), model.text.toString(), sys.text.toString(), shot.isChecked,
                     maxActions.text.toString().toIntOrNull() ?: AiConfig.maxActions(context),
-                    maxRounds.text.toString().toIntOrNull() ?: AiConfig.maxRounds(context)
+                    maxRounds.text.toString().toIntOrNull() ?: AiConfig.maxRounds(context),
+                    ctxWindow.text.toString().toIntOrNull() ?: AiConfig.ctxWindow(context),
+                    compressPct.text.toString().toIntOrNull() ?: AiConfig.compressPct(context),
+                    notify.isChecked
                 )
                 if (key.text.isNotBlank()) AiConfig.setApiKey(context, key.text.toString())
                 Toast.makeText(context, if (AiConfig.isReady(context)) "已保存" else "已保存，但地址/密钥/模型还没填全", Toast.LENGTH_SHORT).show()

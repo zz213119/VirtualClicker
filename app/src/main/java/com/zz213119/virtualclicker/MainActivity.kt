@@ -1248,68 +1248,124 @@ class MainActivity : AppCompatActivity() {
     private var uiPollJob: kotlinx.coroutines.Job? = null
 
     // ---- AI 助手（实验，默认关闭）----
-    private val aiSession by lazy { com.zz213119.virtualclicker.ai.AiSession(applicationContext) }
     private var aiWired = false
-    private var aiJob: kotlinx.coroutines.Job? = null
 
     private fun setupAiPanel() {
         val panel = findViewById<View>(R.id.aiPanel)
         val enabled = Prefs.aiEnabled(this)
         panel.visibility = if (enabled) View.VISIBLE else View.GONE
-        if (!enabled || aiWired) return
-        aiWired = true
+        val session = com.zz213119.virtualclicker.ai.AiHub.session(this)
+        if (!enabled) {
+            session.listener = null
+            session.statusListener = null
+            return
+        }
         val log = findViewById<TextView>(R.id.aiLog)
         val status = findViewById<TextView>(R.id.aiStatus)
         val input = findViewById<android.widget.EditText>(R.id.aiInput)
         val send = findViewById<Button>(R.id.aiSendButton)
         val scroll = findViewById<android.widget.ScrollView>(R.id.aiScroll)
         val config = findViewById<Button>(R.id.aiConfigButton)
-        val clear = findViewById<Button>(R.id.aiClearButton)
-        styleButton(send, true)
-        styleButton(config, false)
-        styleButton(clear, false)
-        fun append(t: String) {
-            log.append(t)
-            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        val newChat = findViewById<Button>(R.id.aiClearButton)
+        val history = findViewById<Button>(R.id.aiHistoryButton)
+        fun toBottom() = scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        fun refreshLog() {
+            log.text = session.displayText()
+            toBottom()
         }
-        config.setOnClickListener { com.zz213119.virtualclicker.ai.AiConfigDialog.show(this) }
-        clear.setOnClickListener {
-            aiSession.stop()
-            aiJob?.cancel()
-            aiSession.clear()
-            log.text = ""
-            status.text = ""
-            send.text = "发送"
-        }
-        send.setOnClickListener {
-            // 正在回答/操作时，这个按钮变成“停止”
-            if (aiJob?.isActive == true) {
-                aiSession.stop()
-                status.text = "正在停止…"
-                return@setOnClickListener
-            }
-            val text = input.text.toString().trim()
-            if (text.isEmpty()) return@setOnClickListener
-            if (!com.zz213119.virtualclicker.ai.AiConfig.isReady(this)) {
-                Toast.makeText(this, "请先点“配置”填写接口地址、密钥和模型", Toast.LENGTH_SHORT).show()
-                com.zz213119.virtualclicker.ai.AiConfigDialog.show(this)
-                return@setOnClickListener
-            }
-            val did = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
-            append("你：$text\n")
-            input.setText("")
-            send.text = "停止"
-            status.text = "思考中…"
-            aiJob = lifecycleScope.launch {
-                try {
-                    val reply = aiSession.ask(text, did, { a -> runOnUiThread { append("  · $a\n") } }) { st ->
-                        runOnUiThread { status.text = st }
-                    }
-                    append("AI：$reply\n\n")
-                } finally {
-                    status.text = ""
-                    send.text = "发送"
+        if (!aiWired) {
+            aiWired = true
+            styleButton(send, true)
+            styleButton(config, false)
+            styleButton(newChat, false)
+            styleButton(history, false)
+            config.setOnClickListener { com.zz213119.virtualclicker.ai.AiConfigDialog.show(this) }
+            newChat.setOnClickListener {
+                if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) {
+                    Toast.makeText(this, "AI 正在运行，请先点“停止”", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
                 }
+                session.newChat()
+                status.text = ""
+                refreshLog()
+            }
+            history.setOnClickListener {
+                val list = session.chats()
+                if (list.isEmpty()) {
+                    Toast.makeText(this, "还没有历史对话", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val fmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                val items = list.map {
+                    fmt.format(java.util.Date(it.updated)) + "  " + it.title + (if (it.id == session.currentId()) "  ✓" else "")
+                }.toTypedArray()
+                val dlg = android.app.AlertDialog.Builder(this)
+                    .setTitle("历史对话（点一下打开，长按删除）")
+                    .setItems(items) { _, i ->
+                        if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) {
+                            Toast.makeText(this, "AI 正在运行，请先点“停止”", Toast.LENGTH_SHORT).show()
+                        } else {
+                            session.open(list[i].id)
+                            refreshLog()
+                        }
+                    }
+                    .setNegativeButton("关闭", null)
+                    .create()
+                dlg.setOnShowListener {
+                    dlg.listView.setOnItemLongClickListener { _, _, pos, _ ->
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("删除这条对话？")
+                            .setMessage(list[pos].title)
+                            .setPositiveButton("删除") { _, _ ->
+                                if (com.zz213119.virtualclicker.ai.AiHub.isRunning() && list[pos].id == session.currentId()) {
+                                    Toast.makeText(this, "这条对话正在运行，请先点“停止”", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    session.deleteChat(list[pos].id)
+                                    dlg.dismiss()
+                                    refreshLog()
+                                }
+                            }
+                            .setNegativeButton("取消", null)
+                            .show()
+                        true
+                    }
+                }
+                dlg.show()
+            }
+            send.setOnClickListener {
+                // 正在回答/操作时，这个按钮变成“停止”
+                if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) {
+                    com.zz213119.virtualclicker.ai.AiHub.stop(this)
+                    status.text = "正在停止…"
+                    return@setOnClickListener
+                }
+                val text = input.text.toString().trim()
+                if (text.isEmpty()) return@setOnClickListener
+                if (!com.zz213119.virtualclicker.ai.AiConfig.isReady(this)) {
+                    Toast.makeText(this, "请先点“配置”填写接口地址、密钥和模型", Toast.LENGTH_SHORT).show()
+                    com.zz213119.virtualclicker.ai.AiConfigDialog.show(this)
+                    return@setOnClickListener
+                }
+                val did = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
+                input.setText("")
+                send.text = "停止"
+                status.text = "思考中…"
+                com.zz213119.virtualclicker.ai.AiHub.start(this, text, did)
+            }
+        }
+        // 每次回到前台：重新显示当前对话，并挂上实时监听（任务在后台跑的时候也不会丢内容）
+        refreshLog()
+        send.text = if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) "停止" else "发送"
+        session.listener = { t ->
+            runOnUiThread {
+                log.append(t)
+                toBottom()
+            }
+        }
+        session.statusListener = { st ->
+            runOnUiThread {
+                status.text = st
+                send.text = if (st.isEmpty()) "发送" else "停止"
             }
         }
     }
@@ -1334,6 +1390,12 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         uiPollJob?.cancel()
         uiPollJob = null
+        // AI 对话框不在前台了：摘掉实时监听（任务在后台继续跑，回来时会重新显示完整对话）
+        runCatching {
+            val s = com.zz213119.virtualclicker.ai.AiHub.session(this)
+            s.listener = null
+            s.statusListener = null
+        }
         super.onPause()
     }
 

@@ -18,59 +18,154 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 一段对话。工具只作用于用户指定的那块虚拟屏，不碰手机本体屏幕：
+ * AI 对话（只作用于用户指定的那块虚拟屏，不碰手机本体屏幕）：
  *  - read_screen_text：读取画面文字（OCR），始终可用；
  *  - tap / long_press / swipe / wait：操作虚拟屏，只有在设置里单独打开“允许 AI 操作虚拟屏”才会提供给模型。
- * 支持 OpenAI 兼容和 Anthropic 两种接口格式（用系统自带的 HttpURLConnection + org.json，不引入额外依赖）。
+ * 支持 OpenAI 兼容和 Anthropic 两种接口格式（系统自带的 HttpURLConnection + org.json，不引入额外依赖）。
+ * 对话会保存到本地（历史对话），上下文快到窗口的 N%（默认 75%）时自动让模型压缩成摘要。
  */
 class AiSession(context: Context) {
-    private val ctx = context.applicationContext
-    /** 按服务商格式保存的完整对话（不含 system）。 */
-    private val history = JSONArray()
-    @Volatile private var stopFlag = false
-    private var actionCount = 0
-    private var onAction: (String) -> Unit = {}
-
-    /** 用户点了“停止”：当前这一轮结束后不再继续，也不再执行后续操作。 */
-    fun stop() { stopFlag = true }
-
-    fun clear() {
-        while (history.length() > 0) history.remove(0)
+    enum class Outcome(val title: String) {
+        DONE("AI 任务完成"),
+        STOPPED("AI 任务已中断（手动停止）"),
+        LIMIT("AI 任务已中断（达到上限）"),
+        ERROR("AI 任务出错中断")
     }
 
-    suspend fun ask(userText: String, displayId: Int, onAction: (String) -> Unit = {}, onStatus: (String) -> Unit): String =
-        withContext(Dispatchers.IO) {
-            stopFlag = false
-            actionCount = 0
-            this@AiSession.onAction = onAction
-            val format = AiConfig.format(ctx)
-            val base = AiConfig.baseUrl(ctx).trim().trimEnd('/')
-            val model = AiConfig.model(ctx).trim()
-            val key = AiConfig.apiKey(ctx)
-            if (base.isEmpty() || model.isEmpty() || key.isEmpty()) {
-                return@withContext "还没配置完整：请点“配置”填写接口地址、密钥、模型。"
-            }
-            if (!base.startsWith("https://")) {
-                return@withContext "接口地址必须是 https:// 开头（系统不允许明文 http）。"
-            }
-            val control = Prefs.aiControl(ctx)
-            val sys = AiConfig.systemPrompt(ctx).ifBlank { if (control) SYSTEM_CONTROL else SYSTEM_READONLY }
-            val shot = if (AiConfig.sendScreenshot(ctx) && displayId >= 0) screenshotBase64(displayId) else null
-            LogWriter.write("AI", "ask format=$format model=$model displayId=$displayId control=$control screenshot=${shot != null} chars=${userText.length}")
-            try {
-                if (format == AiConfig.FORMAT_ANTHROPIC) askAnthropic(base, model, key, sys, userText, shot, displayId, onStatus)
-                else askOpenAi(base, model, key, sys, userText, shot, displayId, onStatus)
-            } catch (e: Throwable) {
-                LogWriter.write("AI", "error ${e.javaClass.simpleName}: ${e.message?.take(300)}")
-                "出错：${e.message ?: e.javaClass.simpleName}"
-            }
+    class Result(val text: String, val outcome: Outcome)
+
+    private val ctx = context.applicationContext
+
+    /** 按服务商格式保存的完整对话（不含 system）。 */
+    private var history = JSONArray()
+    private var historyFormat = ""
+    private val display = StringBuilder()
+    private var chatId = AiStore.newId()
+    private var title = ""
+
+    @Volatile var listener: ((String) -> Unit)? = null
+    @Volatile var statusListener: ((String) -> Unit)? = null
+    @Volatile private var stopFlag = false
+    private var actionCount = 0
+    private var lastPromptTokens = 0
+    private var lastHistoryChars = 0
+
+    // ---------------- 对话管理 ----------------
+    fun displayText(): String = synchronized(display) { display.toString() }
+    fun currentTitle(): String = title
+
+    private fun emit(t: String) {
+        synchronized(display) { display.append(t) }
+        listener?.invoke(t)
+    }
+
+    private fun status(t: String) { statusListener?.invoke(t) }
+
+    /** 用户点了“停止”：当前这一步结束后不再继续，也不再执行后续操作。 */
+    fun stop() { stopFlag = true }
+
+    private fun resetState() {
+        history = JSONArray()
+        historyFormat = ""
+        synchronized(display) { display.setLength(0) }
+        title = ""
+        lastPromptTokens = 0
+        lastHistoryChars = 0
+    }
+
+    fun newChat() {
+        saveNow()
+        chatId = AiStore.newId()
+        resetState()
+    }
+
+    fun restoreLatest() {
+        val latest = AiStore.list(ctx).firstOrNull() ?: return
+        open(latest.id)
+    }
+
+    fun open(id: String): Boolean {
+        if (id != chatId) saveNow()
+        val j = AiStore.load(ctx, id) ?: return false
+        chatId = id
+        resetState()
+        title = j.optString("title")
+        history = j.optJSONArray("wire") ?: JSONArray()
+        historyFormat = j.optString("format")
+        synchronized(display) { display.append(j.optString("display")) }
+        return true
+    }
+
+    fun chats(): List<AiStore.Info> = AiStore.list(ctx)
+
+    fun currentId(): String = chatId
+
+    fun deleteChat(id: String) {
+        AiStore.delete(ctx, id)
+        if (id == chatId) {
+            chatId = AiStore.newId()
+            resetState()
         }
+    }
+
+    private fun saveNow() {
+        if (title.isBlank() && history.length() == 0 && display.isEmpty()) return
+        runCatching { AiStore.save(ctx, chatId, title.ifBlank { "(无标题)" }, historyFormat, displayText(), history) }
+            .onFailure { LogWriter.write("AI", "save chat failed: ${it.message}") }
+    }
+
+    // ---------------- 提问 ----------------
+    suspend fun ask(userText: String, displayId: Int): Result = withContext(Dispatchers.IO) {
+        stopFlag = false
+        actionCount = 0
+        val format = AiConfig.format(ctx)
+        val base = AiConfig.baseUrl(ctx).trim().trimEnd('/')
+        val model = AiConfig.model(ctx).trim()
+        val key = AiConfig.apiKey(ctx)
+        if (base.isEmpty() || model.isEmpty() || key.isEmpty()) {
+            val m = "还没配置完整：请点“配置”填写接口地址、密钥、模型。"
+            emit("AI：$m\n\n")
+            return@withContext Result(m, Outcome.ERROR)
+        }
+        if (!base.startsWith("https://")) {
+            val m = "接口地址必须是 https:// 开头（系统不允许明文 http）。"
+            emit("AI：$m\n\n")
+            return@withContext Result(m, Outcome.ERROR)
+        }
+        if (historyFormat != format) {
+            if (history.length() > 0) {
+                emit("（接口格式已更换，之前的上下文已重置，只保留显示记录）\n")
+                history = JSONArray()
+            }
+            historyFormat = format
+        }
+        if (title.isBlank()) title = userText.replace("\n", " ").take(24)
+        emit("你：$userText\n")
+
+        val control = Prefs.aiControl(ctx)
+        val sys = AiConfig.systemPrompt(ctx).ifBlank { if (control) SYSTEM_CONTROL else SYSTEM_READONLY }
+        val shot = if (AiConfig.sendScreenshot(ctx) && displayId >= 0) screenshotBase64(displayId) else null
+        LogWriter.write("AI", "ask format=$format model=$model displayId=$displayId control=$control screenshot=${shot != null} chars=${userText.length} chat=$chatId")
+
+        val result = try {
+            if (format == AiConfig.FORMAT_ANTHROPIC) askAnthropic(base, model, key, sys, userText, shot, displayId)
+            else askOpenAi(base, model, key, sys, userText, shot, displayId)
+        } catch (e: Throwable) {
+            LogWriter.write("AI", "error ${e.javaClass.simpleName}: ${e.message?.take(300)}")
+            Result("出错：${e.message ?: e.javaClass.simpleName}", Outcome.ERROR)
+        }
+        stripImages()
+        emit("AI：${result.text}\n\n")
+        saveNow()
+        status("")
+        result
+    }
 
     // ---------------- OpenAI 兼容 ----------------
     private fun askOpenAi(
         base: String, model: String, key: String, sys: String, userText: String,
-        shot: String?, displayId: Int, onStatus: (String) -> Unit
-    ): String {
+        shot: String?, displayId: Int
+    ): Result {
         val userMsg = JSONObject().put("role", "user")
         if (shot != null) {
             userMsg.put(
@@ -82,39 +177,46 @@ class AiSession(context: Context) {
         history.put(userMsg)
 
         val url = "$base/chat/completions"
-        repeat(maxRounds()) {
-            if (stopFlag) return "(已停止)"
+        val maxR = AiConfig.maxRounds(ctx)
+        var round = 0
+        while (maxR == 0 || round < maxR) {
+            round++
+            if (stopFlag) return Result("(已停止)", Outcome.STOPPED)
+            maybeCompress(AiConfig.FORMAT_OPENAI, base, model, key)
             val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", sys))
             for (i in 0 until history.length()) msgs.put(history.get(i))
             val body = JSONObject()
                 .put("model", model)
                 .put("messages", msgs)
                 .put("tools", openAiTools())
-            onStatus("请求中…")
+            val charsNow = history.toString().length
+            status("请求中…")
             val resp = post(url, mapOf("Authorization" to "Bearer $key"), body)
+            lastPromptTokens = resp.optJSONObject("usage")?.optInt("prompt_tokens", 0) ?: 0
+            lastHistoryChars = charsNow
             val msg = resp.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
             if (msg.isNull("content")) msg.put("content", "")
             history.put(msg)
             val calls = msg.optJSONArray("tool_calls")
-            if (calls == null || calls.length() == 0) return msg.optString("content").ifBlank { "(空回复)" }
+            if (calls == null || calls.length() == 0) return Result(msg.optString("content").ifBlank { "(空回复)" }, Outcome.DONE)
             for (i in 0 until calls.length()) {
                 val call = calls.getJSONObject(i)
                 val fn = call.getJSONObject("function")
                 val name = fn.optString("name")
                 val args = runCatching { JSONObject(fn.optString("arguments").ifBlank { "{}" }) }.getOrDefault(JSONObject())
-                onStatus("执行 $name…")
+                status("执行 $name…")
                 val result = runTool(name, args, displayId)
                 history.put(JSONObject().put("role", "tool").put("tool_call_id", call.optString("id")).put("content", result))
             }
         }
-        return "(工具调用次数过多，已停止)"
+        return Result("已达到本次提问的轮数上限（$maxR 轮）。可以在“配置”里调大，或改为 0 表示不限制，再发一句话继续。", Outcome.LIMIT)
     }
 
     // ---------------- Anthropic ----------------
     private fun askAnthropic(
         base: String, model: String, key: String, sys: String, userText: String,
-        shot: String?, displayId: Int, onStatus: (String) -> Unit
-    ): String {
+        shot: String?, displayId: Int
+    ): Result {
         val content = JSONArray()
         if (shot != null) {
             content.put(JSONObject().put("type", "image").put("source",
@@ -125,16 +227,25 @@ class AiSession(context: Context) {
 
         val url = if (base.endsWith("/v1")) "$base/messages" else "$base/v1/messages"
         val headers = mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01")
-        repeat(maxRounds()) {
-            if (stopFlag) return "(已停止)"
+        val maxR = AiConfig.maxRounds(ctx)
+        var round = 0
+        while (maxR == 0 || round < maxR) {
+            round++
+            if (stopFlag) return Result("(已停止)", Outcome.STOPPED)
+            maybeCompress(AiConfig.FORMAT_ANTHROPIC, base, model, key)
             val body = JSONObject()
                 .put("model", model)
                 .put("max_tokens", 2048)
                 .put("system", sys)
                 .put("messages", history)
                 .put("tools", anthropicTools())
-            onStatus("请求中…")
+            val charsNow = history.toString().length
+            status("请求中…")
             val resp = post(url, headers, body)
+            val u = resp.optJSONObject("usage")
+            lastPromptTokens = if (u == null) 0 else
+                u.optInt("input_tokens", 0) + u.optInt("cache_read_input_tokens", 0) + u.optInt("cache_creation_input_tokens", 0)
+            lastHistoryChars = charsNow
             val blocks = resp.getJSONArray("content")
             history.put(JSONObject().put("role", "assistant").put("content", blocks))
             val results = JSONArray()
@@ -144,16 +255,185 @@ class AiSession(context: Context) {
                 when (b.optString("type")) {
                     "text" -> text.append(b.optString("text"))
                     "tool_use" -> {
-                        onStatus("执行 ${b.optString("name")}…")
+                        status("执行 ${b.optString("name")}…")
                         val r = runTool(b.optString("name"), b.optJSONObject("input") ?: JSONObject(), displayId)
                         results.put(JSONObject().put("type", "tool_result").put("tool_use_id", b.optString("id")).put("content", r))
                     }
                 }
             }
-            if (results.length() == 0) return text.toString().ifBlank { "(空回复)" }
+            if (results.length() == 0) return Result(text.toString().ifBlank { "(空回复)" }, Outcome.DONE)
             history.put(JSONObject().put("role", "user").put("content", results))
         }
-        return "(工具调用次数过多，已停止)"
+        return Result("已达到本次提问的轮数上限（$maxR 轮）。可以在“配置”里调大，或改为 0 表示不限制，再发一句话继续。", Outcome.LIMIT)
+    }
+
+    // ---------------- 上下文压缩 ----------------
+    private fun maybeCompress(format: String, base: String, model: String, key: String) {
+        val window = AiConfig.ctxWindow(ctx)
+        if (window <= 0) return
+        val limit = window.toLong() * AiConfig.compressPct(ctx) / 100
+        val chars = history.toString().length
+        val est = if (lastPromptTokens > 0) lastPromptTokens + maxOf(0, chars - lastHistoryChars) / 2L
+        else chars / 2L + 600
+        if (est < limit) return
+        LogWriter.write("AI", "compress start est=$est limit=$limit window=$window pct=${AiConfig.compressPct(ctx)}")
+        status("压缩上下文…")
+        val cut = lastRealUserIndex(format)
+        if (cut <= 0) {
+            // 整段历史都属于当前这一次提问（一直在调工具）：只能把较早的工具结果缩短
+            shrinkToolResults(format)
+            lastPromptTokens = 0
+            emit("（上下文已精简：较早的屏幕文字已省略）\n")
+            return
+        }
+        val older = JSONArray()
+        for (i in 0 until cut) older.put(history.get(i))
+        val transcript = transcript(older, format).takeLast(60_000)
+        val summary = runCatching { summarize(format, base, model, key, transcript) }
+            .getOrElse {
+                LogWriter.write("AI", "summarize failed: ${it.message?.take(200)}")
+                "（较早的对话因压缩失败被省略）"
+            }
+        val fresh = JSONArray()
+        fresh.put(JSONObject().put("role", "user").put("content", "【之前对话的摘要】\n$summary"))
+        fresh.put(JSONObject().put("role", "assistant").put("content", "好的，我已了解之前的进展，请继续。"))
+        for (i in cut until history.length()) fresh.put(history.get(i))
+        val after = fresh.toString().length
+        history = fresh
+        lastPromptTokens = 0
+        lastHistoryChars = after
+        emit("（上下文已压缩：$chars → $after 字符）\n")
+        LogWriter.write("AI", "compress done $chars -> $after chars")
+    }
+
+    private fun lastRealUserIndex(format: String): Int {
+        for (i in history.length() - 1 downTo 0) {
+            val m = history.getJSONObject(i)
+            if (m.optString("role") != "user") continue
+            if (format == AiConfig.FORMAT_OPENAI) return i
+            val c = m.opt("content")
+            if (c is String) return i
+            if (c is JSONArray) {
+                for (k in 0 until c.length()) if (c.getJSONObject(k).optString("type") == "text") return i
+            }
+        }
+        return -1
+    }
+
+    private fun shrinkToolResults(format: String) {
+        val placeholder = "[较早的工具结果已省略以节省上下文]"
+        var seen = 0
+        for (i in history.length() - 1 downTo 0) {
+            val m = history.getJSONObject(i)
+            if (format == AiConfig.FORMAT_OPENAI) {
+                if (m.optString("role") == "tool" && ++seen > 2) m.put("content", placeholder)
+            } else {
+                val c = m.opt("content") as? JSONArray ?: continue
+                for (k in c.length() - 1 downTo 0) {
+                    val b = c.getJSONObject(k)
+                    if (b.optString("type") == "tool_result" && ++seen > 2) b.put("content", placeholder)
+                }
+            }
+        }
+    }
+
+    private fun textOf(c: Any?): String = when (c) {
+        is String -> c
+        is JSONArray -> buildString {
+            for (k in 0 until c.length()) {
+                val b = c.optJSONObject(k) ?: continue
+                if (b.optString("type") == "text") append(b.optString("text"))
+            }
+        }
+        else -> ""
+    }
+
+    private fun transcript(arr: JSONArray, format: String): String {
+        val sb = StringBuilder()
+        for (i in 0 until arr.length()) {
+            val m = arr.getJSONObject(i)
+            val role = m.optString("role")
+            val who = if (role == "user") "用户：" else "AI："
+            if (format == AiConfig.FORMAT_OPENAI) {
+                when (role) {
+                    "user" -> sb.append("用户：").append(textOf(m.opt("content"))).append('\n')
+                    "assistant" -> {
+                        val t = textOf(m.opt("content"))
+                        if (t.isNotBlank()) sb.append("AI：").append(t).append('\n')
+                        val calls = m.optJSONArray("tool_calls")
+                        if (calls != null) for (k in 0 until calls.length()) {
+                            val f = calls.getJSONObject(k).optJSONObject("function")
+                            sb.append("AI 调用工具：").append(f?.optString("name")).append(' ')
+                                .append(f?.optString("arguments")?.take(120)).append('\n')
+                        }
+                    }
+                    "tool" -> sb.append("工具结果：").append(m.optString("content").take(400)).append('\n')
+                }
+            } else {
+                val c = m.opt("content")
+                if (c is String) sb.append(who).append(c).append('\n')
+                else if (c is JSONArray) for (k in 0 until c.length()) {
+                    val b = c.getJSONObject(k)
+                    when (b.optString("type")) {
+                        "text" -> sb.append(who).append(b.optString("text")).append('\n')
+                        "tool_use" -> sb.append("AI 调用工具：").append(b.optString("name")).append(' ')
+                            .append(b.optJSONObject("input")?.toString()?.take(120)).append('\n')
+                        "tool_result" -> sb.append("工具结果：").append(textOf(b.opt("content")).ifEmpty { b.opt("content")?.toString() ?: "" }.take(400)).append('\n')
+                    }
+                }
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun summarize(format: String, base: String, model: String, key: String, transcript: String): String {
+        val prompt = "下面是用户和一个屏幕助手（可以读取、操作用户的虚拟屏）的历史对话记录。请压缩成一份供后续继续对话使用的摘要：" +
+            "保留用户的目标、已完成的操作及结果、屏幕上的关键信息（界面状态、重要文字和位置）、未完成的事项和用户的偏好；不要编造；" +
+            "用中文，不超过 800 字。\n\n=====\n$transcript"
+        return if (format == AiConfig.FORMAT_ANTHROPIC) {
+            val url = if (base.endsWith("/v1")) "$base/messages" else "$base/v1/messages"
+            val body = JSONObject().put("model", model).put("max_tokens", 1500)
+                .put("system", "你是对话摘要助手。")
+                .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
+            val resp = post(url, mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"), body)
+            textOf(resp.getJSONArray("content")).ifBlank { throw IOException("摘要为空") }
+        } else {
+            val body = JSONObject().put("model", model)
+                .put("messages", JSONArray()
+                    .put(JSONObject().put("role", "system").put("content", "你是对话摘要助手。"))
+                    .put(JSONObject().put("role", "user").put("content", prompt)))
+            val resp = post("$base/chat/completions", mapOf("Authorization" to "Bearer $key"), body)
+            resp.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content").ifBlank { throw IOException("摘要为空") }
+        }
+    }
+
+    /** 每次提问结束后把历史里的截图去掉（只留文字），省上下文，也避免存盘文件过大。 */
+    private fun stripImages() {
+        for (i in 0 until history.length()) {
+            val m = history.optJSONObject(i) ?: continue
+            if (m.optString("role") != "user") continue
+            val c = m.opt("content") as? JSONArray ?: continue
+            if (historyFormat == AiConfig.FORMAT_OPENAI) {
+                var hasImage = false
+                val text = StringBuilder()
+                for (k in 0 until c.length()) {
+                    val b = c.optJSONObject(k) ?: continue
+                    if (b.optString("type") == "image_url") hasImage = true else text.append(b.optString("text"))
+                }
+                if (hasImage) m.put("content", text.toString() + "\n[截图已省略]")
+            } else {
+                val keep = JSONArray()
+                var removed = false
+                for (k in 0 until c.length()) {
+                    val b = c.optJSONObject(k) ?: continue
+                    if (b.optString("type") == "image") removed = true else keep.put(b)
+                }
+                if (removed) {
+                    keep.put(JSONObject().put("type", "text").put("text", "[截图已省略]"))
+                    m.put("content", keep)
+                }
+            }
+        }
     }
 
     // ---------------- 工具 ----------------
@@ -179,8 +459,11 @@ class AiSession(context: Context) {
         return l
     }
 
-    private fun schema(t: ToolDef) = JSONObject().put("type", "object").put("properties", t.props)
-        .apply { if (t.required.isNotEmpty()) put("required", JSONArray(t.required)) }
+    private fun schema(t: ToolDef): JSONObject {
+        val o = JSONObject().put("type", "object").put("properties", t.props)
+        if (t.required.isNotEmpty()) o.put("required", JSONArray(t.required))
+        return o
+    }
 
     private fun openAiTools() = JSONArray().apply {
         toolDefs().forEach { t ->
@@ -193,8 +476,6 @@ class AiSession(context: Context) {
         toolDefs().forEach { t -> put(JSONObject().put("name", t.name).put("description", t.desc).put("input_schema", schema(t))) }
     }
 
-    private fun maxRounds() = AiConfig.maxRounds(ctx)
-
     private fun runTool(name: String, args: JSONObject, displayId: Int): String {
         if (stopFlag) return "用户已停止。"
         if (displayId < 0) return "当前没有虚拟屏，无法操作。"
@@ -203,7 +484,8 @@ class AiSession(context: Context) {
             "tap", "long_press", "swipe", "wait" -> {
                 if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏（设置里的“允许 AI 操作虚拟屏”是关闭的）。"
                 val limit = AiConfig.maxActions(ctx)
-                if (++actionCount > limit) return "已达到单次提问的操作上限（$limit 次），请让用户确认后再继续。"
+                actionCount++
+                if (limit > 0 && actionCount > limit) return "已达到单次提问的操作上限（$limit 次），请让用户确认后再继续。"
                 act(name, args, displayId)
             }
             else -> "未知工具：$name"
@@ -231,7 +513,7 @@ class AiSession(context: Context) {
                 val x = nx("x"); val y = nx("y")
                 if (!ok(x) || !ok(y)) return "坐标必须是 0~1 之间的数。"
                 val done = VirtualDisplayManager.tap(displayId, x * w, y * h)
-                onAction("点击 (%.2f, %.2f)".format(x, y))
+                emit("  · 点击 (%.2f, %.2f)\n".format(x, y))
                 r = if (done) "已点击" else "点击失败"
             }
             "long_press" -> {
@@ -239,7 +521,7 @@ class AiSession(context: Context) {
                 if (!ok(x) || !ok(y)) return "坐标必须是 0~1 之间的数。"
                 val d = a.optInt("duration_ms", 800).coerceIn(200, 5000)
                 val done = VirtualDisplayManager.longPress(displayId, x * w, y * h, d)
-                onAction("长按 (%.2f, %.2f) %dms".format(x, y, d))
+                emit("  · 长按 (%.2f, %.2f) %dms\n".format(x, y, d))
                 r = if (done) "已长按" else "长按失败"
             }
             "swipe" -> {
@@ -247,12 +529,12 @@ class AiSession(context: Context) {
                 if (!ok(x1) || !ok(y1) || !ok(x2) || !ok(y2)) return "坐标必须是 0~1 之间的数。"
                 val d = a.optInt("duration_ms", 400).coerceIn(100, 3000)
                 val done = VirtualDisplayManager.swipe(displayId, x1 * w, y1 * h, x2 * w, y2 * h, d)
-                onAction("滑动 (%.2f, %.2f)→(%.2f, %.2f)".format(x1, y1, x2, y2))
+                emit("  · 滑动 (%.2f, %.2f)→(%.2f, %.2f)\n".format(x1, y1, x2, y2))
                 r = if (done) "已滑动" else "滑动失败"
             }
             else -> {
                 val ms = a.optInt("ms", 1000).coerceIn(100, 10_000)
-                onAction("等待 ${ms}ms")
+                emit("  · 等待 ${ms}ms\n")
                 Thread.sleep(ms.toLong())
                 r = "已等待"
             }

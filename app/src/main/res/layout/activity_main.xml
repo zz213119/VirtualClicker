@@ -200,27 +200,38 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="AI 助手（仅限虚拟屏）" />
+                    android:text="AI 助手" />
 
                 <Button
-                    android:id="@+id/aiConfigButton"
+                    android:id="@+id/aiHistoryButton"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
                     android:minWidth="0dp"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="配置"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="历史"
                     android:textSize="12sp" />
 
                 <Button
                     android:id="@+id/aiClearButton"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
-                    android:layout_marginLeft="6dp"
+                    android:layout_marginLeft="4dp"
                     android:minWidth="0dp"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="清空"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="新对话"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/aiConfigButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginLeft="4dp"
+                    android:minWidth="0dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="配置"
                     android:textSize="12sp" />
             </LinearLayout>
 
