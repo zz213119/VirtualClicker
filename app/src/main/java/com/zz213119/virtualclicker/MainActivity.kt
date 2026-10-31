@@ -1247,10 +1247,66 @@ class MainActivity : AppCompatActivity() {
     }
     private var uiPollJob: kotlinx.coroutines.Job? = null
 
+    // ---- AI 助手（实验，默认关闭）----
+    private val aiSession by lazy { com.zz213119.virtualclicker.ai.AiSession(applicationContext) }
+    private var aiWired = false
+    private var aiJob: kotlinx.coroutines.Job? = null
+
+    private fun setupAiPanel() {
+        val panel = findViewById<View>(R.id.aiPanel)
+        val enabled = Prefs.aiEnabled(this)
+        panel.visibility = if (enabled) View.VISIBLE else View.GONE
+        if (!enabled || aiWired) return
+        aiWired = true
+        val log = findViewById<TextView>(R.id.aiLog)
+        val status = findViewById<TextView>(R.id.aiStatus)
+        val input = findViewById<android.widget.EditText>(R.id.aiInput)
+        val send = findViewById<Button>(R.id.aiSendButton)
+        val scroll = findViewById<android.widget.ScrollView>(R.id.aiScroll)
+        val config = findViewById<Button>(R.id.aiConfigButton)
+        val clear = findViewById<Button>(R.id.aiClearButton)
+        styleButton(send, true)
+        styleButton(config, false)
+        styleButton(clear, false)
+        fun append(t: String) {
+            log.append(t)
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        }
+        config.setOnClickListener { com.zz213119.virtualclicker.ai.AiConfigDialog.show(this) }
+        clear.setOnClickListener {
+            aiJob?.cancel()
+            aiSession.clear()
+            log.text = ""
+            status.text = ""
+            send.isEnabled = true
+        }
+        send.setOnClickListener {
+            val text = input.text.toString().trim()
+            if (text.isEmpty()) return@setOnClickListener
+            if (!com.zz213119.virtualclicker.ai.AiConfig.isReady(this)) {
+                Toast.makeText(this, "请先点“配置”填写接口地址、密钥和模型", Toast.LENGTH_SHORT).show()
+                com.zz213119.virtualclicker.ai.AiConfigDialog.show(this)
+                return@setOnClickListener
+            }
+            val did = if (currentDisplayId >= 0) currentDisplayId else VirtualDisplayManager.oneClickDisplayId
+            append("你：$text\n")
+            input.setText("")
+            send.isEnabled = false
+            status.text = "思考中…"
+            aiJob = lifecycleScope.launch {
+                val reply = aiSession.ask(text, did) { st -> runOnUiThread { status.text = st } }
+                append("AI：$reply\n\n")
+                status.text = ""
+                send.isEnabled = true
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         findViewById<android.view.View>(R.id.debugCard).visibility =
             if (Prefs.showDebugTools(this)) android.view.View.VISIBLE else android.view.View.GONE
+        setupAiPanel()
         refreshStatus()
         refreshYihuanCard()
         uiPollJob?.cancel()

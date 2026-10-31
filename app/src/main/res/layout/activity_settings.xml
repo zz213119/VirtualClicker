@@ -361,6 +361,23 @@
             android:text="游戏版本：云异环（默认）"
             android:textColor="@color/vc_text"
             android:textSize="14sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchAi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="44dp"
+            android:text="AI 助手（实验，默认关闭）：开启后主页虚拟屏下方出现对话框，只读取虚拟屏里的内容"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/aiConfigSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="配置 AI（接口地址 / 密钥 / 模型）" />
         </LinearLayout>
 
         <LinearLayout

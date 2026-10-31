@@ -40,6 +40,8 @@ object Prefs {
         if (oneClickNative(c)) "com.hottagames.yh.laohu" else "com.pwrd.cloud.yh.laohu"
     fun autoQuitGame(c: Context) = sp(c).getBoolean("auto_quit_game", false)
     fun autoScreenOff(c: Context) = sp(c).getBoolean("auto_screen_off", false)
+    /** AI 助手（实验）：默认关闭。开启后主页虚拟屏下方出现对话框，只读取虚拟屏内的应用。 */
+    fun aiEnabled(c: Context) = sp(c).getBoolean("ai_enabled", false)
     fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", true)
 
     fun setBool(c: Context, key: String, value: Boolean) =

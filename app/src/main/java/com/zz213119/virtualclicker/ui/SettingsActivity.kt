@@ -86,6 +86,31 @@ class SettingsActivity : AppCompatActivity() {
         // ---- 开关 ----
         bindSwitch(R.id.switchOneClick, "one_click_mode", Prefs.oneClickMode(this))
         findViewById<SwitchCompat>(R.id.switchNativeGame).text = nativeGameLabel(Prefs.oneClickNative(this))
+        findViewById<SwitchCompat>(R.id.switchAi).apply {
+            isChecked = Prefs.aiEnabled(this@SettingsActivity)
+            setOnCheckedChangeListener { v, checked ->
+                if (!checked) {
+                    Prefs.setBool(this@SettingsActivity, "ai_enabled", false)
+                } else if (!Prefs.aiEnabled(this@SettingsActivity)) {
+                    // 开启前先说清楚数据会去哪里
+                    android.app.AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle("开启 AI 助手？")
+                        .setMessage("开启后，你提问时，虚拟屏里识别出的文字（以及你选择附带的截图）会发送到你自己配置的 AI 服务商。\n只读取虚拟屏内的应用，不读手机本体屏幕，也不会点击或操作。\n默认不联网，关闭后不再发送任何内容。")
+                        .setPositiveButton("开启") { _, _ ->
+                            Prefs.setBool(this@SettingsActivity, "ai_enabled", true)
+                            if (!com.zz213119.virtualclicker.ai.AiConfig.isReady(this@SettingsActivity)) {
+                                com.zz213119.virtualclicker.ai.AiConfigDialog.show(this@SettingsActivity)
+                            }
+                        }
+                        .setNegativeButton("取消") { _, _ -> v.post { (v as SwitchCompat).isChecked = false } }
+                        .setOnCancelListener { v.post { (v as SwitchCompat).isChecked = false } }
+                        .show()
+                }
+            }
+        }
+        findViewById<android.widget.Button>(R.id.aiConfigSettingsButton).setOnClickListener {
+            com.zz213119.virtualclicker.ai.AiConfigDialog.show(this)
+        }
         bindSwitch(R.id.switchNativeGame, "one_click_native", Prefs.oneClickNative(this)) {
             findViewById<SwitchCompat>(R.id.switchNativeGame).text = nativeGameLabel(it)
         }
