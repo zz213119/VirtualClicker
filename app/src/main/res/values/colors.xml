@@ -1,24 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Ocean / blue-slate workbench palette. Color carries action and state, not decoration. -->
-    <color name="vc_bg">#F2F6F7</color>
+    <!-- Light, low-noise workbench palette; the existing violet remains the sole brand accent. -->
+    <color name="vc_bg">#F4F5F9</color>
     <color name="vc_card">#FFFFFF</color>
-    <color name="vc_primary">#12677A</color>
+    <color name="vc_primary">#5146B8</color>
     <color name="vc_on_primary">#FFFFFF</color>
-    <color name="vc_tonal">#DCECEF</color>
-    <color name="vc_on_tonal">#164B58</color>
-    <color name="vc_text">#17272D</color>
-    <color name="vc_text2">#536B72</color>
-    <color name="vc_outline">#D5E2E5</color>
-    <color name="vc_surface_variant">#E9F0F2</color>
-    <color name="vc_idle">#81949A</color>
-    <color name="vc_success">#25734F</color>
-    <color name="vc_warning">#805600</color>
+    <color name="vc_tonal">#ECEAF7</color>
+    <color name="vc_on_tonal">#332D68</color>
+    <color name="vc_text">#1C1B22</color>
+    <color name="vc_text2">#555B68</color>
+    <color name="vc_outline">#DFE2EA</color>
+    <color name="vc_surface_variant">#EEF0F5</color>
+    <color name="vc_idle">#858B98</color>
+    <color name="vc_success">#23734F</color>
+    <color name="vc_warning">#8A5A00</color>
     <color name="vc_error">#B3261E</color>
-    <color name="vc_preview_bg">#D4E1E4</color>
-    <color name="vc_overlay">#CC17333B</color>
-    <color name="vc_overlay_text">#FFFFFF</color>
-    <color name="vc_float_surface">#F2FFFFFF</color>
-    <color name="vc_float_text">#17272D</color>
-    <color name="vc_float_card">#142B34</color>
 </resources>
