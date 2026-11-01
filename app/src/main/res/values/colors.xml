@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="vc_bg">#F6F4FA</color>
+    <!-- Light, low-noise workbench palette; the existing violet remains the sole brand accent. -->
+    <color name="vc_bg">#F4F5F9</color>
     <color name="vc_card">#FFFFFF</color>
-    <color name="vc_primary">#5B4FC4</color>
+    <color name="vc_primary">#5146B8</color>
     <color name="vc_on_primary">#FFFFFF</color>
-    <color name="vc_tonal">#E6DFF7</color>
-    <color name="vc_on_tonal">#3A2F7A</color>
-    <color name="vc_text">#1D1B20</color>
-    <color name="vc_text2">#625B71</color>
-    <color name="vc_outline">#E7E0EB</color>
+    <color name="vc_tonal">#ECEAF7</color>
+    <color name="vc_on_tonal">#332D68</color>
+    <color name="vc_text">#1C1B22</color>
+    <color name="vc_text2">#555B68</color>
+    <color name="vc_outline">#DFE2EA</color>
+    <color name="vc_surface_variant">#EEF0F5</color>
+    <color name="vc_idle">#858B98</color>
+    <color name="vc_success">#23734F</color>
+    <color name="vc_warning">#8A5A00</color>
+    <color name="vc_error">#B3261E</color>
 </resources>

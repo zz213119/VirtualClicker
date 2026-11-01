@@ -2,15 +2,17 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:clipToPadding="false"
     android:background="@color/vc_bg">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="20dp"
-        android:paddingBottom="28dp">
+        android:paddingHorizontal="18dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="32dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -42,15 +44,15 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:text="通用后台自动点击器 · Shizuku 优先" />
+            android:text="后台自动化工作台 · Shizuku 优先" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="18dp">
 
         <TextView
             android:id="@+id/shizukuStatus"
@@ -69,7 +71,7 @@
             android:id="@+id/connectRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:orientation="horizontal">
         <Button
             android:id="@+id/shizukuPermission"
@@ -93,23 +95,61 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="18dp">
+
+        <TextView
+            android:id="@+id/appsTitle"
+            style="@style/VC.Section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="目标应用与脚本" />
+        <Button
+            android:id="@+id/listApps"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="选择要放进虚拟屏的应用" />
+        <TextView
+            android:id="@+id/appList"
+            style="@style/VC.Caption"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="尚未选择应用" />
+        <Button
+            android:id="@+id/openScriptEditor"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="脚本编辑器（自动精灵模式）" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp">
 
         <TextView
             android:id="@+id/launchVirtualDisplayLabel"
             style="@style/VC.Section"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="虚拟屏" />
+            android:text="虚拟屏预览" />
         <com.zz213119.virtualclicker.ui.AspectRatioFrameLayout
             android:id="@+id/previewContainer"
             android:layout_width="240dp"
             android:layout_height="426dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/bg_preview_container"
             android:clipToOutline="true"
             android:clipChildren="true">
@@ -132,14 +172,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:text="待执行"
-                android:textColor="#5F6368"
+                android:text="等待启动"
+                android:textColor="@color/vc_text2"
                 android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/fullscreenCloseButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_gravity="top|start"
                 android:layout_margin="12dp"
                 android:background="@drawable/bg_status_badge"
@@ -183,7 +223,7 @@
             android:id="@+id/aiPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
             android:padding="12dp"
@@ -205,7 +245,8 @@
                 <Button
                     android:id="@+id/aiSaveScriptButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="48dp"
+                    android:minHeight="48dp"
                     android:minWidth="0dp"
                     android:paddingLeft="10dp"
                     android:paddingRight="10dp"
@@ -305,7 +346,7 @@
             style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:text="分辨率" />
         <Spinner
             android:id="@+id/resolutionSpinner"
@@ -338,7 +379,7 @@
             android:id="@+id/launchRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:orientation="horizontal">
         <Button
             android:id="@+id/launchVirtualDisplay"
@@ -391,10 +432,10 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="18dp">
 
         <TextView
             android:id="@+id/yihuanTitle"
@@ -414,7 +455,7 @@
             style="@style/Widget.VC.Button.Filled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:text="开始自动刷" />
 
         <Button
@@ -427,52 +468,16 @@
 
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-        <TextView
-            android:id="@+id/appsTitle"
-            style="@style/VC.Section"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="应用与脚本" />
-        <Button
-            android:id="@+id/listApps"
-            style="@style/Widget.VC.Button.Tonal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="选择要放进虚拟屏的应用" />
-        <TextView
-            android:id="@+id/appList"
-            style="@style/VC.Caption"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="" />
-        <Button
-            android:id="@+id/openScriptEditor"
-            style="@style/Widget.VC.Button.Tonal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="脚本编辑器（自动精灵模式）" />
-
-        </LinearLayout>
+        
 
         <LinearLayout
             android:id="@+id/debugCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="16dp"
             android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="18dp">
 
         <TextView
             android:id="@+id/inputTitle"
