@@ -203,9 +203,20 @@
                     android:text="AI 助手" />
 
                 <Button
+                    android:id="@+id/aiSaveScriptButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:minWidth="0dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="存脚本"
+                    android:textSize="12sp" />
+
+                <Button
                     android:id="@+id/aiHistoryButton"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
+                    android:layout_marginLeft="4dp"
                     android:minWidth="0dp"
                     android:paddingLeft="10dp"
                     android:paddingRight="10dp"

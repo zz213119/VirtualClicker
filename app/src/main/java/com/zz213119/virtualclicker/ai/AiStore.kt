@@ -23,10 +23,10 @@ object AiStore {
             }
             .sortedByDescending { it.updated }
 
-    fun save(c: Context, id: String, title: String, format: String, display: String, wire: JSONArray) {
+    fun save(c: Context, id: String, title: String, format: String, display: String, wire: JSONArray, rec: JSONArray = JSONArray()) {
         val now = System.currentTimeMillis()
         val body = JSONObject().put("id", id).put("title", title).put("updated", now)
-            .put("format", format).put("display", display).put("wire", wire)
+            .put("format", format).put("display", display).put("wire", wire).put("rec", rec)
         File(dir(c), "$id.json").writeText(body.toString(), Charsets.UTF_8)
         File(dir(c), "$id.meta").writeText(JSONObject().put("title", title).put("updated", now).toString(), Charsets.UTF_8)
     }

@@ -1268,6 +1268,7 @@ class MainActivity : AppCompatActivity() {
         val config = findViewById<Button>(R.id.aiConfigButton)
         val newChat = findViewById<Button>(R.id.aiClearButton)
         val history = findViewById<Button>(R.id.aiHistoryButton)
+        val saveScript = findViewById<Button>(R.id.aiSaveScriptButton)
         fun toBottom() = scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         fun refreshLog() {
             log.text = session.displayText()
@@ -1279,6 +1280,7 @@ class MainActivity : AppCompatActivity() {
             styleButton(config, false)
             styleButton(newChat, false)
             styleButton(history, false)
+            styleButton(saveScript, false)
             config.setOnClickListener { com.zz213119.virtualclicker.ai.AiConfigDialog.show(this) }
             newChat.setOnClickListener {
                 if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) {
@@ -1288,6 +1290,52 @@ class MainActivity : AppCompatActivity() {
                 session.newChat()
                 status.text = ""
                 refreshLog()
+            }
+            saveScript.setOnClickListener {
+                if (!session.hasRecorded()) {
+                    Toast.makeText(this, "还没有可保存的操作：需要先开启“允许 AI 操作虚拟屏”，并让 AI 操作过", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                val dp = resources.displayMetrics.density
+                val box = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    setPadding((20 * dp).toInt(), (8 * dp).toInt(), (20 * dp).toInt(), 0)
+                }
+                val nameEt = android.widget.EditText(this).apply {
+                    hint = "脚本名称"
+                    setText(session.currentTitle().ifBlank { "AI脚本" })
+                    setSingleLine(true)
+                }
+                val waitEt = android.widget.EditText(this).apply {
+                    hint = "相邻操作之间的间隔（毫秒），0 = 不加"
+                    setText("1000")
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                }
+                box.addView(nameEt)
+                box.addView(waitEt)
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("把 AI 最近一次的操作存成脚本")
+                    .setMessage("会在每两个操作之间自动加入等待。存好后可在脚本编辑器里改。")
+                    .setView(box)
+                    .setPositiveButton("保存") { _, _ ->
+                        val n = nameEt.text.toString().trim()
+                        val w = waitEt.text.toString().toLongOrNull() ?: 1000L
+                        val exists = com.zz213119.virtualclicker.script.ScriptRepository.exists(this, n)
+                        fun doSave(over: Boolean) {
+                            val msg = session.saveScript(n, w, "last_task", over)
+                            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                        }
+                        if (exists) {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("已有同名脚本")
+                                .setMessage("覆盖「$n」？")
+                                .setPositiveButton("覆盖") { _, _ -> doSave(true) }
+                                .setNegativeButton("取消", null)
+                                .show()
+                        } else doSave(false)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
             }
             history.setOnClickListener {
                 val list = session.chats()

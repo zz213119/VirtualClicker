@@ -5,6 +5,10 @@ import android.graphics.Bitmap
 import android.util.Base64
 import com.zz213119.virtualclicker.core.Prefs
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
+import com.zz213119.virtualclicker.script.ScriptAction
+import com.zz213119.virtualclicker.script.ScriptActionType
+import com.zz213119.virtualclicker.script.ScriptDefinition
+import com.zz213119.virtualclicker.script.ScriptRepository
 import com.zz213119.virtualclicker.service.LogWriter
 import com.zz213119.virtualclicker.task.FrameOps
 import com.zz213119.virtualclicker.task.GameOcr
@@ -50,6 +54,11 @@ class AiSession(context: Context) {
     private var lastPromptTokens = 0
     private var lastHistoryChars = 0
 
+    /** AI 实际执行成功的操作（归一化坐标 + 当时虚拟屏尺寸），可以随时存成脚本。task = 第几次提问。 */
+    private class Rec(val type: String, val x: Float, val y: Float, val x2: Float, val y2: Float, val dur: Long, val w: Int, val h: Int, val task: Int)
+    private val recorded = ArrayList<Rec>()
+    private var taskNo = 0
+
     // ---------------- 对话管理 ----------------
     fun displayText(): String = synchronized(display) { display.toString() }
     fun currentTitle(): String = title
@@ -71,6 +80,8 @@ class AiSession(context: Context) {
         title = ""
         lastPromptTokens = 0
         lastHistoryChars = 0
+        recorded.clear()
+        taskNo = 0
     }
 
     fun newChat() {
@@ -93,6 +104,14 @@ class AiSession(context: Context) {
         history = j.optJSONArray("wire") ?: JSONArray()
         historyFormat = j.optString("format")
         synchronized(display) { display.append(j.optString("display")) }
+        j.optJSONArray("rec")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                recorded.add(Rec(o.optString("t"), o.optDouble("x").toFloat(), o.optDouble("y").toFloat(),
+                    o.optDouble("x2").toFloat(), o.optDouble("y2").toFloat(), o.optLong("d"), o.optInt("w"), o.optInt("h"), o.optInt("k")))
+            }
+            taskNo = recorded.maxOfOrNull { it.task } ?: 0
+        }
         return true
     }
 
@@ -110,7 +129,12 @@ class AiSession(context: Context) {
 
     private fun saveNow() {
         if (title.isBlank() && history.length() == 0 && display.isEmpty()) return
-        runCatching { AiStore.save(ctx, chatId, title.ifBlank { "(无标题)" }, historyFormat, displayText(), history) }
+        runCatching {
+            val rec = JSONArray()
+            for (r in recorded) rec.put(JSONObject().put("t", r.type).put("x", r.x.toDouble()).put("y", r.y.toDouble())
+                .put("x2", r.x2.toDouble()).put("y2", r.y2.toDouble()).put("d", r.dur).put("w", r.w).put("h", r.h).put("k", r.task))
+            AiStore.save(ctx, chatId, title.ifBlank { "(无标题)" }, historyFormat, displayText(), history, rec)
+        }
             .onFailure { LogWriter.write("AI", "save chat failed: ${it.message}") }
     }
 
@@ -118,6 +142,7 @@ class AiSession(context: Context) {
     suspend fun ask(userText: String, displayId: Int): Result = withContext(Dispatchers.IO) {
         stopFlag = false
         actionCount = 0
+        taskNo++
         val format = AiConfig.format(ctx)
         val base = AiConfig.baseUrl(ctx).trim().trimEnd('/')
         val model = AiConfig.model(ctx).trim()
@@ -440,6 +465,8 @@ class AiSession(context: Context) {
     private class ToolDef(val name: String, val desc: String, val props: JSONObject, val required: List<String>)
 
     private fun num(desc: String) = JSONObject().put("type", "number").put("description", desc)
+    private fun str(desc: String) = JSONObject().put("type", "string").put("description", desc)
+    private fun bool(desc: String) = JSONObject().put("type", "boolean").put("description", desc)
 
     private fun toolDefs(): List<ToolDef> {
         val l = mutableListOf(ToolDef(TOOL_READ, TOOL_READ_DESC, JSONObject(), emptyList()))
@@ -455,6 +482,15 @@ class AiSession(context: Context) {
                 listOf("x1", "y1", "x2", "y2"))
             l += ToolDef("wait", "等待一段时间再继续（比如等加载），最多 10 秒。",
                 JSONObject().put("ms", num("等待毫秒数")), listOf("ms"))
+            l += ToolDef("save_script",
+                "把本对话里你已经执行过的点击/长按/滑动/等待保存成一个脚本，用户之后可以在脚本编辑器里查看、修改和运行。" +
+                    "会在相邻的操作之间自动加入固定的等待（wait_ms，毫秒；用户说“0.5 秒”就填 500，说“不要间隔”就填 0）。" +
+                    "用户要求把间隔改成别的数值时，用同样的名字、新的 wait_ms 和 overwrite=true 再保存一次即可。",
+                JSONObject().put("name", str("脚本名称"))
+                    .put("wait_ms", num("相邻操作之间自动加入的等待，毫秒，默认 1000，0 表示不加"))
+                    .put("scope", str("last_task（默认，只存最近一次有操作的提问）或 all（存本对话里所有操作）"))
+                    .put("overwrite", bool("同名脚本已存在时是否覆盖，默认 false")),
+                listOf("name"))
         }
         return l
     }
@@ -488,9 +524,51 @@ class AiSession(context: Context) {
                 if (limit > 0 && actionCount > limit) return "已达到单次提问的操作上限（$limit 次），请让用户确认后再继续。"
                 act(name, args, displayId)
             }
+            "save_script" -> {
+                if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏，也就没有可保存的操作。"
+                saveScript(
+                    args.optString("name"),
+                    if (args.has("wait_ms")) args.optLong("wait_ms", 1000L) else 1000L,
+                    args.optString("scope", "last_task"),
+                    args.optBoolean("overwrite", false)
+                )
+            }
             else -> "未知工具：$name"
         }
     }
+
+    /** 把已执行的操作存成脚本（和脚本编辑器里的脚本同一格式）。返回给 AI / 界面的说明。 */
+    fun saveScript(name: String, waitMs: Long, scope: String, overwrite: Boolean): String {
+        val n = name.trim()
+        if (n.isEmpty()) return "脚本名称不能为空。"
+        if (recorded.isEmpty()) return "还没有可保存的操作：本对话里 AI 还没有执行过点击/滑动。"
+        val src = if (scope == "all") recorded.toList() else {
+            val last = recorded.maxOf { it.task }
+            recorded.filter { it.task == last }
+        }
+        val wait = waitMs.coerceIn(0L, 600_000L)
+        val out = ArrayList<ScriptAction>()
+        for (r in src) {
+            val type = runCatching { ScriptActionType.valueOf(r.type) }.getOrNull() ?: continue
+            val a = if (type == ScriptActionType.WAIT) ScriptAction(type, durationMs = r.dur)
+            else ScriptAction(type, x = r.x * r.w, y = r.y * r.h, x2 = r.x2 * r.w, y2 = r.y2 * r.h, durationMs = r.dur)
+            if (wait > 0 && out.isNotEmpty() && type != ScriptActionType.WAIT && out.last().type != ScriptActionType.WAIT) {
+                out.add(ScriptAction(ScriptActionType.WAIT, durationMs = wait))
+            }
+            out.add(a)
+        }
+        if (out.isEmpty()) return "没有可保存的操作。"
+        if (ScriptRepository.exists(ctx, n) && !overwrite) return "已存在同名脚本「$n」。换一个名字，或者设置 overwrite=true 覆盖。"
+        ScriptRepository.saveOrUpdate(ctx, ScriptDefinition(name = n, repeatCount = 1, actions = out))
+        val waits = out.count { it.type == ScriptActionType.WAIT }
+        val msg = "已保存脚本「$n」：共 ${out.size} 个动作（其中等待 $waits 个），自动间隔 ${wait} 毫秒。可以在脚本编辑器里查看、修改和运行。"
+        emit("  · $msg\n")
+        LogWriter.write("AI", "save_script name=$n actions=${out.size} wait=$wait scope=$scope")
+        saveNow()
+        return msg
+    }
+
+    fun hasRecorded(): Boolean = recorded.isNotEmpty()
 
     private fun readScreen(displayId: Int): String {
         val bytes = VirtualDisplayManager.captureFrame(displayId, 1280) ?: return "取帧失败（虚拟屏可能处于黑屏或已关闭）。"
@@ -513,6 +591,7 @@ class AiSession(context: Context) {
                 val x = nx("x"); val y = nx("y")
                 if (!ok(x) || !ok(y)) return "坐标必须是 0~1 之间的数。"
                 val done = VirtualDisplayManager.tap(displayId, x * w, y * h)
+                if (done) recorded.add(Rec("CLICK", x, y, 0f, 0f, 50L, size[0], size[1], taskNo))
                 emit("  · 点击 (%.2f, %.2f)\n".format(x, y))
                 r = if (done) "已点击" else "点击失败"
             }
@@ -521,6 +600,7 @@ class AiSession(context: Context) {
                 if (!ok(x) || !ok(y)) return "坐标必须是 0~1 之间的数。"
                 val d = a.optInt("duration_ms", 800).coerceIn(200, 5000)
                 val done = VirtualDisplayManager.longPress(displayId, x * w, y * h, d)
+                if (done) recorded.add(Rec("LONG_PRESS", x, y, 0f, 0f, d.toLong(), size[0], size[1], taskNo))
                 emit("  · 长按 (%.2f, %.2f) %dms\n".format(x, y, d))
                 r = if (done) "已长按" else "长按失败"
             }
@@ -529,12 +609,14 @@ class AiSession(context: Context) {
                 if (!ok(x1) || !ok(y1) || !ok(x2) || !ok(y2)) return "坐标必须是 0~1 之间的数。"
                 val d = a.optInt("duration_ms", 400).coerceIn(100, 3000)
                 val done = VirtualDisplayManager.swipe(displayId, x1 * w, y1 * h, x2 * w, y2 * h, d)
+                if (done) recorded.add(Rec("SWIPE", x1, y1, x2, y2, d.toLong(), size[0], size[1], taskNo))
                 emit("  · 滑动 (%.2f, %.2f)→(%.2f, %.2f)\n".format(x1, y1, x2, y2))
                 r = if (done) "已滑动" else "滑动失败"
             }
             else -> {
                 val ms = a.optInt("ms", 1000).coerceIn(100, 10_000)
                 emit("  · 等待 ${ms}ms\n")
+                recorded.add(Rec("WAIT", 0f, 0f, 0f, 0f, ms.toLong(), size[0], size[1], taskNo))
                 Thread.sleep(ms.toLong())
                 r = "已等待"
             }
@@ -585,6 +667,7 @@ class AiSession(context: Context) {
             "你是一个屏幕助手，只能看到并操作用户的“虚拟屏”（里面运行着某个应用或游戏），不能碰手机本体屏幕。" +
                 "用 read_screen_text 读取画面文字和位置，用 tap / long_press / swipe 操作，用 wait 等待加载。" +
                 "每做一步操作后，再用 read_screen_text 确认结果，不要盲目连续操作。" +
-                "不要进行付费、购买、删除、转账、授权登录等不可逆操作，除非用户明确要求；拿不准时先问用户。请用简洁的中文回答。"
+                "不要进行付费、购买、删除、转账、授权登录等不可逆操作，除非用户明确要求；拿不准时先问用户。" +
+                "用户要求把操作保存成脚本时，调用 save_script（用户说“间隔 0.5 秒”就把 wait_ms 设为 500；要改间隔就用同名再保存一次并设 overwrite=true）。请用简洁的中文回答。"
     }
 }
