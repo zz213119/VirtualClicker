@@ -1269,7 +1269,11 @@ class MainActivity : AppCompatActivity() {
         val newChat = findViewById<Button>(R.id.aiClearButton)
         val history = findViewById<Button>(R.id.aiHistoryButton)
         val saveScript = findViewById<Button>(R.id.aiSaveScriptButton)
-        fun toBottom() = scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        // 不能用 fullScroll(FOCUS_DOWN)：它会去找并抢焦点，外层页面会跟着跳到别的控件（表现为页面自己往上/往下拉）
+        fun toBottom() = scroll.post {
+            val dy = (scroll.getChildAt(0)?.height ?: 0) - scroll.height
+            if (dy > 0) scroll.scrollTo(0, dy)
+        }
         fun refreshLog() {
             log.text = session.displayText()
             toBottom()
