@@ -58,6 +58,40 @@ object AiConfig {
             .apply()
     }
 
+    private fun hasPath(u: String): Boolean = u.substringAfter("://", u).contains('/')
+
+    /**
+     * 实际请求地址：填基础地址会自动补全路径；末尾加 # 表示原样使用（不补全）。
+     * OpenAI 兼容：…/v1 → …/v1/chat/completions；Anthropic：…→ …/v1/messages。
+     */
+    fun chatUrl(format: String, rawBase: String): String {
+        val raw = rawBase.trim()
+        if (raw.endsWith("#")) return raw.dropLast(1).trim()
+        val b = raw.trimEnd('/')
+        if (b.isEmpty()) return ""
+        return if (format == FORMAT_ANTHROPIC) {
+            when {
+                b.endsWith("/messages") -> b
+                b.endsWith("/v1") -> "$b/messages"
+                else -> "$b/v1/messages"
+            }
+        } else {
+            when {
+                b.endsWith("/chat/completions") -> b
+                hasPath(b) -> "$b/chat/completions"
+                else -> "$b/v1/chat/completions"
+            }
+        }
+    }
+
+    /** 拉取可用模型列表的地址（在实际请求地址的基础上把末尾换成 /models）。 */
+    fun modelsUrl(format: String, rawBase: String): String {
+        val chat = chatUrl(format, rawBase)
+        if (chat.isEmpty()) return ""
+        val root = chat.replace(Regex("/(chat/completions|messages)$"), "")
+        return if (root == chat) "$chat/models" else "$root/models"
+    }
+
     fun hasApiKey(c: Context) = !sp(c).getString("api_key_enc", "").isNullOrEmpty()
 
     fun isReady(c: Context) =

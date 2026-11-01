@@ -201,7 +201,7 @@ class AiSession(context: Context) {
         } else userMsg.put("content", userText)
         history.put(userMsg)
 
-        val url = "$base/chat/completions"
+        val url = AiConfig.chatUrl(AiConfig.FORMAT_OPENAI, base)
         val maxR = AiConfig.maxRounds(ctx)
         var round = 0
         while (maxR == 0 || round < maxR) {
@@ -250,7 +250,7 @@ class AiSession(context: Context) {
         content.put(JSONObject().put("type", "text").put("text", userText))
         history.put(JSONObject().put("role", "user").put("content", content))
 
-        val url = if (base.endsWith("/v1")) "$base/messages" else "$base/v1/messages"
+        val url = AiConfig.chatUrl(AiConfig.FORMAT_ANTHROPIC, base)
         val headers = mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01")
         val maxR = AiConfig.maxRounds(ctx)
         var round = 0
@@ -416,7 +416,7 @@ class AiSession(context: Context) {
             "保留用户的目标、已完成的操作及结果、屏幕上的关键信息（界面状态、重要文字和位置）、未完成的事项和用户的偏好；不要编造；" +
             "用中文，不超过 800 字。\n\n=====\n$transcript"
         return if (format == AiConfig.FORMAT_ANTHROPIC) {
-            val url = if (base.endsWith("/v1")) "$base/messages" else "$base/v1/messages"
+            val url = AiConfig.chatUrl(AiConfig.FORMAT_ANTHROPIC, base)
             val body = JSONObject().put("model", model).put("max_tokens", 1500)
                 .put("system", "你是对话摘要助手。")
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
@@ -427,7 +427,7 @@ class AiSession(context: Context) {
                 .put("messages", JSONArray()
                     .put(JSONObject().put("role", "system").put("content", "你是对话摘要助手。"))
                     .put(JSONObject().put("role", "user").put("content", prompt)))
-            val resp = post("$base/chat/completions", mapOf("Authorization" to "Bearer $key"), body)
+            val resp = post(AiConfig.chatUrl(AiConfig.FORMAT_OPENAI, base), mapOf("Authorization" to "Bearer $key"), body)
             resp.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content").ifBlank { throw IOException("摘要为空") }
         }
     }
