@@ -185,7 +185,7 @@
                 android:background="@drawable/bg_status_badge"
                 android:gravity="center"
                 android:text="✕"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/vc_overlay_text"
                 android:textSize="16sp"
                 android:visibility="gone" />
 
@@ -213,7 +213,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
                     android:text="待机"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/vc_overlay_text"
                     android:textSize="12sp" />
             </LinearLayout>
 

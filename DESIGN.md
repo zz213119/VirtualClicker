@@ -1,24 +1,30 @@
 # VirtualClicker — Design system
 
 ## Design intent
-A calm, precise Android automation workbench. This is an Operate interface: the visual system should make connection state, target selection, preview, and task control immediately understandable. Familiar Android behavior and clarity outrank decoration.
+A calm, precise Android automation workbench. This is an Operate interface: connection state, target selection, preview, and task control must be immediately understandable. Familiar Android behavior and clarity outrank decoration.
 
-## Visual identity
-- Preserve the existing violet identity as the sole brand accent.
-- Use a cool neutral background, white work surfaces, and thin neutral outlines.
-- Reserve green for confirmed running/success, amber for warnings, and red for errors.
+## Visual identity — Ocean / blue-slate
+The palette has moved from violet to an oceanic blue-teal identity. It should feel technical and dependable without turning the screen into a neon gaming dashboard.
+
+| Role | Token | Value |
+|---|---|---|
+| App background | `vc_bg` | `#F2F6F7` |
+| Work surface | `vc_card` | `#FFFFFF` |
+| Primary action / selection | `vc_primary` | `#12677A` |
+| Primary text | `vc_text` | `#17272D` |
+| Supporting text | `vc_text2` | `#536B72` |
+| Outline | `vc_outline` | `#D5E2E5` |
+| Tonal surface | `vc_tonal` | `#DCECEF` |
+| Running / success | `vc_success` | `#25734F` |
+| Warning | `vc_warning` | `#805600` |
+| Error / stop | `vc_error` | `#B3261E` |
+
+- Blue-teal is the single brand accent for primary actions, selection, and active controls.
+- Green means confirmed running/success only; amber means warning; red means failure or destructive stop.
+- Preview surfaces use a neutral blue-grey so target-app content remains the visual focus.
+- Floating controls use a deep blue-green shell with a translucent light toolbar and dark, readable control labels.
 - Use color to communicate action, selection, and state—not as decoration.
 - No gradients, glass blur, glow, fake metrics, decorative icon tiles, or ornamental card grids.
-
-## Tokens
-- Background: `vc_bg`
-- Surface: `vc_card`
-- Brand action: `vc_primary` / `vc_on_primary`
-- Tonal controls: `vc_tonal` / `vc_on_tonal`
-- Main text: `vc_text`
-- Supporting text: `vc_text2`
-- Outlines: `vc_outline`
-- Semantic values: `vc_success`, `vc_warning`, `vc_error`
 
 ## Layout and components
 - Keep the Android Views + AppCompat stack.
