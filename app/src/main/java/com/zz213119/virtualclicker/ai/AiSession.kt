@@ -189,9 +189,18 @@ class AiSession(context: Context) {
         val shot = if (AiConfig.sendScreenshot(ctx) && displayId >= 0) screenshotBase64(displayId) else null
         LogWriter.write("AI", "ask format=$format model=$model mode=$mode displayId=$displayId control=$control screenshot=${shot != null} chars=${userText.length} chat=$chatId")
 
+        // 快速模式：提问时就把当前屏幕文字一起发给模型，它一开始就“看得见”，不用先花一次请求去读屏
+        val sendText = if (AiConfig.mode(ctx) == AiConfig.MODE_FAST && displayId >= 0) {
+            status("读取屏幕…")
+            val t0 = System.currentTimeMillis()
+            val txt = readScreen(displayId)
+            toolMs += System.currentTimeMillis() - t0
+            toolUsed = true
+            "$userText\n\n【发送时的屏幕文字（系统自动附上，之后画面可能已变化）】\n$txt"
+        } else userText
         val result = try {
-            if (format == AiConfig.FORMAT_ANTHROPIC) askAnthropic(base, model, key, sys, userText, shot, displayId)
-            else askOpenAi(base, model, key, sys, userText, shot, displayId)
+            if (format == AiConfig.FORMAT_ANTHROPIC) askAnthropic(base, model, key, sys, sendText, shot, displayId)
+            else askOpenAi(base, model, key, sys, sendText, shot, displayId)
         } catch (e: Throwable) {
             LogWriter.write("AI", "error ${e.javaClass.simpleName}: ${e.message?.take(300)}")
             Result("出错：${e.message ?: e.javaClass.simpleName}", Outcome.ERROR)
@@ -823,8 +832,9 @@ class AiSession(context: Context) {
         private const val TOOL_READ = "read_screen_text"
         private const val TOOL_REGION = "read_region_text"
         private const val HINT_FAST =
-            "【快速模式】速度优先，目标是用最少的请求往返完成任务：每次操作后系统会自动附上操作后的屏幕文字，不需要再单独调用 read_screen_text；" +
-                "界面稳定、步骤明确时，用 batch_actions 一次提交多个操作（或在同一轮里连续调用多个工具）；只在拿不准时才多读一次；回答要简短，不要复述屏幕内容。"
+            "【快速模式】速度优先，目标是用最少的请求往返完成任务。你并不是看不见：用户提问时，系统已经附上了当时的屏幕文字；之后每次操作完，系统也会自动附上操作后的屏幕文字，" +
+                "所以不需要为了“看一眼”再单独调用 read_screen_text。只有这些文字不够用、或者画面可能已经变化时，才自己再读一次。" +
+                "界面稳定、步骤明确时，用 batch_actions 一次提交多个操作；拿不准时不要用批量，一步一步来。回答要简短，不要复述屏幕内容。"
         private const val HINT_ACCURATE =
             "【高准确度模式】准确比速度重要：操作前先读屏确认当前界面；每一步操作后必须再读屏确认结果；回答问题前先读完整道题和所有选项，逐项分析，不要凭印象；" +
                 "小字、数字、细节用 read_region_text 放大读取；给出答案前自己再核对一遍，发现矛盾就重新读屏。"
