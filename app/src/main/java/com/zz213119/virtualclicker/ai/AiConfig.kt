@@ -17,6 +17,9 @@ import javax.crypto.spec.GCMParameterSpec
 object AiConfig {
     const val FORMAT_OPENAI = "openai"
     const val FORMAT_ANTHROPIC = "anthropic"
+    const val MODE_FAST = "fast"
+    const val MODE_NORMAL = "normal"
+    const val MODE_ACCURATE = "accurate"
 
     private const val KEY_ALIAS = "vc_ai_api_key"
 
@@ -91,6 +94,12 @@ object AiConfig {
         val root = chat.replace(Regex("/(chat/completions|messages)$"), "")
         return if (root == chat) "$chat/models" else "$root/models"
     }
+
+    /** 速度 / 准确度模式：快速 = 少读屏少等待；标准；高准确度 = 每步确认、放大读小字、答完自检（更慢更费）。 */
+    fun mode(c: Context): String = sp(c).getString("mode", MODE_NORMAL) ?: MODE_NORMAL
+    fun setMode(c: Context, m: String) { sp(c).edit().putString("mode", m).apply() }
+    fun modeLabel(m: String) = when (m) { MODE_FAST -> "快速"; MODE_ACCURATE -> "高准确度"; else -> "标准" }
+    fun nextMode(m: String) = when (m) { MODE_NORMAL -> MODE_FAST; MODE_FAST -> MODE_ACCURATE; else -> MODE_NORMAL }
 
     fun hasApiKey(c: Context) = !sp(c).getString("api_key_enc", "").isNullOrEmpty()
 

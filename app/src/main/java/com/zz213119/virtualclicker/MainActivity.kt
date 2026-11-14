@@ -1269,6 +1269,10 @@ class MainActivity : AppCompatActivity() {
         val newChat = findViewById<Button>(R.id.aiClearButton)
         val history = findViewById<Button>(R.id.aiHistoryButton)
         val saveScript = findViewById<Button>(R.id.aiSaveScriptButton)
+        val modeBtn = findViewById<Button>(R.id.aiModeButton)
+        fun refreshMode() {
+            modeBtn.text = "模式：" + com.zz213119.virtualclicker.ai.AiConfig.modeLabel(com.zz213119.virtualclicker.ai.AiConfig.mode(this))
+        }
         // 不能用 fullScroll(FOCUS_DOWN)：它会去找并抢焦点，外层页面会跟着跳到别的控件（表现为页面自己往上/往下拉）
         fun toBottom() = scroll.post {
             val dy = (scroll.getChildAt(0)?.height ?: 0) - scroll.height
@@ -1285,6 +1289,18 @@ class MainActivity : AppCompatActivity() {
             styleButton(newChat, false)
             styleButton(history, false)
             styleButton(saveScript, false)
+            styleButton(modeBtn, false)
+            modeBtn.setOnClickListener {
+                val cur = com.zz213119.virtualclicker.ai.AiConfig.mode(this)
+                val nxt = com.zz213119.virtualclicker.ai.AiConfig.nextMode(cur)
+                com.zz213119.virtualclicker.ai.AiConfig.setMode(this, nxt)
+                refreshMode()
+                Toast.makeText(this, when (nxt) {
+                    com.zz213119.virtualclicker.ai.AiConfig.MODE_FAST -> "快速模式：少读屏、少等待，适合简单任务"
+                    com.zz213119.virtualclicker.ai.AiConfig.MODE_ACCURATE -> "高准确度模式：每步确认、放大读小字、答完自检，更慢更费"
+                    else -> "标准模式"
+                }, Toast.LENGTH_SHORT).show()
+            }
             config.setOnClickListener { com.zz213119.virtualclicker.ai.AiConfigDialog.show(this) }
             newChat.setOnClickListener {
                 if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) {
@@ -1406,6 +1422,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         // 每次回到前台：重新显示当前对话，并挂上实时监听（任务在后台跑的时候也不会丢内容）
+        refreshMode()
         refreshLog()
         send.text = if (com.zz213119.virtualclicker.ai.AiHub.isRunning()) "停止" else "发送"
         session.listener = { t ->

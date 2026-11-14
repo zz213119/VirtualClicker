@@ -58,6 +58,10 @@ class AiSession(context: Context) {
     private class Rec(val type: String, val x: Float, val y: Float, val x2: Float, val y2: Float, val dur: Long, val w: Int, val h: Int, val task: Int)
     private val recorded = ArrayList<Rec>()
     private var taskNo = 0
+    private var toolUsed = false
+    private var selfChecked = false
+    /** 模型不支持“推理/思考”这类额外参数时记一下，之后不再带（避免每次多失败一次）。 */
+    private var extrasUnsupportedFor = ""
 
     // ---------------- 对话管理 ----------------
     fun displayText(): String = synchronized(display) { display.toString() }
@@ -143,6 +147,8 @@ class AiSession(context: Context) {
         stopFlag = false
         actionCount = 0
         taskNo++
+        toolUsed = false
+        selfChecked = false
         val format = AiConfig.format(ctx)
         val base = AiConfig.baseUrl(ctx).trim().trimEnd('/')
         val model = AiConfig.model(ctx).trim()
@@ -168,9 +174,15 @@ class AiSession(context: Context) {
         emit("你：$userText\n")
 
         val control = Prefs.aiControl(ctx)
-        val sys = AiConfig.systemPrompt(ctx).ifBlank { if (control) SYSTEM_CONTROL else SYSTEM_READONLY }
+        val mode = AiConfig.mode(ctx)
+        val sys = AiConfig.systemPrompt(ctx).ifBlank { if (control) SYSTEM_CONTROL else SYSTEM_READONLY } +
+            when (mode) {
+                AiConfig.MODE_FAST -> "\n\n" + HINT_FAST
+                AiConfig.MODE_ACCURATE -> "\n\n" + HINT_ACCURATE
+                else -> ""
+            }
         val shot = if (AiConfig.sendScreenshot(ctx) && displayId >= 0) screenshotBase64(displayId) else null
-        LogWriter.write("AI", "ask format=$format model=$model displayId=$displayId control=$control screenshot=${shot != null} chars=${userText.length} chat=$chatId")
+        LogWriter.write("AI", "ask format=$format model=$model mode=$mode displayId=$displayId control=$control screenshot=${shot != null} chars=${userText.length} chat=$chatId")
 
         val result = try {
             if (format == AiConfig.FORMAT_ANTHROPIC) askAnthropic(base, model, key, sys, userText, shot, displayId)
@@ -216,14 +228,32 @@ class AiSession(context: Context) {
                 .put("tools", openAiTools())
             val charsNow = history.toString().length
             status("请求中…")
-            val resp = post(url, mapOf("Authorization" to "Bearer $key"), body)
+            val useExtras = AiConfig.mode(ctx) == AiConfig.MODE_ACCURATE && extrasUnsupportedFor != model
+            if (useExtras) body.put("reasoning_effort", "high")
+            val resp = try {
+                post(url, mapOf("Authorization" to "Bearer $key"), body)
+            } catch (e: IOException) {
+                if (useExtras && (e.message?.startsWith("HTTP 400") == true || e.message?.startsWith("HTTP 422") == true)) {
+                    extrasUnsupportedFor = model
+                    LogWriter.write("AI", "reasoning_effort not supported by $model, retry without")
+                    body.remove("reasoning_effort")
+                    post(url, mapOf("Authorization" to "Bearer $key"), body)
+                } else throw e
+            }
             lastPromptTokens = resp.optJSONObject("usage")?.optInt("prompt_tokens", 0) ?: 0
             lastHistoryChars = charsNow
             val msg = resp.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
             if (msg.isNull("content")) msg.put("content", "")
             history.put(msg)
             val calls = msg.optJSONArray("tool_calls")
-            if (calls == null || calls.length() == 0) return Result(msg.optString("content").ifBlank { "(空回复)" }, Outcome.DONE)
+            if (calls == null || calls.length() == 0) {
+                if (needSelfCheck()) {
+                    history.put(JSONObject().put("role", "user").put("content", SELF_CHECK))
+                    status("自检中…")
+                    continue
+                }
+                return Result(msg.optString("content").ifBlank { "(空回复)" }, Outcome.DONE)
+            }
             for (i in 0 until calls.length()) {
                 val call = calls.getJSONObject(i)
                 val fn = call.getJSONObject("function")
@@ -266,7 +296,22 @@ class AiSession(context: Context) {
                 .put("tools", anthropicTools())
             val charsNow = history.toString().length
             status("请求中…")
-            val resp = post(url, headers, body)
+            val useExtras = AiConfig.mode(ctx) == AiConfig.MODE_ACCURATE && extrasUnsupportedFor != model
+            if (useExtras) {
+                body.put("max_tokens", 8192)
+                body.put("thinking", JSONObject().put("type", "enabled").put("budget_tokens", 4000))
+            }
+            val resp = try {
+                post(url, headers, body)
+            } catch (e: IOException) {
+                if (useExtras && (e.message?.startsWith("HTTP 400") == true || e.message?.startsWith("HTTP 422") == true)) {
+                    extrasUnsupportedFor = model
+                    LogWriter.write("AI", "thinking not supported by $model, retry without")
+                    body.remove("thinking")
+                    body.put("max_tokens", 2048)
+                    post(url, headers, body)
+                } else throw e
+            }
             val u = resp.optJSONObject("usage")
             lastPromptTokens = if (u == null) 0 else
                 u.optInt("input_tokens", 0) + u.optInt("cache_read_input_tokens", 0) + u.optInt("cache_creation_input_tokens", 0)
@@ -286,10 +331,24 @@ class AiSession(context: Context) {
                     }
                 }
             }
-            if (results.length() == 0) return Result(text.toString().ifBlank { "(空回复)" }, Outcome.DONE)
+            if (results.length() == 0) {
+                if (needSelfCheck()) {
+                    history.put(JSONObject().put("role", "user").put("content", SELF_CHECK))
+                    status("自检中…")
+                    continue
+                }
+                return Result(text.toString().ifBlank { "(空回复)" }, Outcome.DONE)
+            }
             history.put(JSONObject().put("role", "user").put("content", results))
         }
         return Result("已达到本次提问的轮数上限（$maxR 轮）。可以在“配置”里调大，或改为 0 表示不限制，再发一句话继续。", Outcome.LIMIT)
+    }
+
+    /** 高准确度模式：用过工具（读过屏幕）的回答，给出前再让模型自检一遍，只做一次。 */
+    private fun needSelfCheck(): Boolean {
+        if (AiConfig.mode(ctx) != AiConfig.MODE_ACCURATE || selfChecked || !toolUsed) return false
+        selfChecked = true
+        return true
     }
 
     // ---------------- 上下文压缩 ----------------
@@ -470,6 +529,14 @@ class AiSession(context: Context) {
 
     private fun toolDefs(): List<ToolDef> {
         val l = mutableListOf(ToolDef(TOOL_READ, TOOL_READ_DESC, JSONObject(), emptyList()))
+        if (AiConfig.mode(ctx) == AiConfig.MODE_ACCURATE) {
+            l += ToolDef(TOOL_REGION,
+                "放大读取画面上某一块区域的文字（更适合小字、数字、细节）。区域用归一化坐标 x1,y1（左上）和 x2,y2（右下）；返回的坐标仍是整个画面的归一化坐标。只读。",
+                JSONObject().put("x1", num("左上横向 0~1")).put("y1", num("左上纵向 0~1"))
+                    .put("x2", num("右下横向 0~1")).put("y2", num("右下纵向 0~1"))
+                    .put("scale", num("放大倍数 2~4，默认 3")),
+                listOf("x1", "y1", "x2", "y2"))
+        }
         if (Prefs.aiControl(ctx)) {
             val xy = "x/y 为归一化坐标：x 0=最左 1=最右，y 0=最上 1=最下"
             l += ToolDef("tap", "点击虚拟屏上的一个位置。$xy。",
@@ -514,9 +581,11 @@ class AiSession(context: Context) {
 
     private fun runTool(name: String, args: JSONObject, displayId: Int): String {
         if (stopFlag) return "用户已停止。"
+        toolUsed = true
         if (displayId < 0) return "当前没有虚拟屏，无法操作。"
         return when (name) {
             TOOL_READ -> readScreen(displayId)
+            TOOL_REGION -> readRegion(displayId, args)
             "tap", "long_press", "swipe", "wait" -> {
                 if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏（设置里的“允许 AI 操作虚拟屏”是关闭的）。"
                 val limit = AiConfig.maxActions(ctx)
@@ -570,8 +639,39 @@ class AiSession(context: Context) {
 
     fun hasRecorded(): Boolean = recorded.isNotEmpty()
 
+    private fun frameWidth() = when (AiConfig.mode(ctx)) {
+        AiConfig.MODE_FAST -> 960       // 快速：小一点，取帧和识别都更快
+        AiConfig.MODE_ACCURATE -> 1920  // 高准确度：尽量用原分辨率
+        else -> 1280
+    }
+
+    private fun readRegion(displayId: Int, a: JSONObject): String {
+        fun v(k: String) = a.optDouble(k, Double.NaN).toFloat()
+        val x1 = v("x1"); val y1 = v("y1"); val x2 = v("x2"); val y2 = v("y2")
+        if (listOf(x1, y1, x2, y2).any { it.isNaN() || it < 0f || it > 1f } || x2 <= x1 || y2 <= y1) {
+            return "区域坐标必须是 0~1 之间，且右下要大于左上。"
+        }
+        val scale = a.optDouble("scale", 3.0).toFloat().coerceIn(2f, 4f)
+        val bytes = VirtualDisplayManager.captureFrame(displayId, 1920) ?: return "取帧失败（虚拟屏可能处于黑屏或已关闭）。"
+        val bmp = FrameOps.decode(bytes) ?: return "画面解码失败。"
+        val cx0 = (x1 * bmp.width).toInt().coerceIn(0, bmp.width - 2)
+        val cy0 = (y1 * bmp.height).toInt().coerceIn(0, bmp.height - 2)
+        val cw = ((x2 - x1) * bmp.width).toInt().coerceIn(2, bmp.width - cx0)
+        val ch = ((y2 - y1) * bmp.height).toInt().coerceIn(2, bmp.height - cy0)
+        val crop = runCatching {
+            val c = Bitmap.createBitmap(bmp, cx0, cy0, cw, ch)
+            Bitmap.createScaledBitmap(c, (cw * scale).toInt().coerceAtLeast(2), (ch * scale).toInt().coerceAtLeast(2), true)
+        }.getOrElse { return "裁剪失败：${it.message}" }
+        val lines = runCatching { GameOcr.read(crop) }.getOrElse { return "文字识别失败：${it.message}" }
+        LogWriter.write("AI", "tool $TOOL_REGION lines=${lines.size} scale=$scale")
+        if (lines.isEmpty()) return "(这块区域没有识别到文字)"
+        return lines.take(150).joinToString("\n") {
+            "%s (%.2f,%.2f)".format(it.text, x1 + it.cx * (x2 - x1), y1 + it.cy * (y2 - y1))
+        }
+    }
+
     private fun readScreen(displayId: Int): String {
-        val bytes = VirtualDisplayManager.captureFrame(displayId, 1280) ?: return "取帧失败（虚拟屏可能处于黑屏或已关闭）。"
+        val bytes = VirtualDisplayManager.captureFrame(displayId, frameWidth()) ?: return "取帧失败（虚拟屏可能处于黑屏或已关闭）。"
         val bmp = FrameOps.decode(bytes) ?: return "画面解码失败。"
         val lines = runCatching { GameOcr.read(bmp) }.getOrElse { return "文字识别失败：${it.message}" }
         LogWriter.write("AI", "tool $TOOL_READ lines=${lines.size}")
@@ -622,7 +722,7 @@ class AiSession(context: Context) {
             }
         }
         LogWriter.write("AI", "action $name -> $r")
-        Thread.sleep(450)   // 给界面一点反应时间
+        Thread.sleep(when (AiConfig.mode(ctx)) { AiConfig.MODE_FAST -> 120L; AiConfig.MODE_ACCURATE -> 800L; else -> 450L })   // 给界面一点反应时间
         return r
     }
 
@@ -659,6 +759,14 @@ class AiSession(context: Context) {
 
     companion object {
         private const val TOOL_READ = "read_screen_text"
+        private const val TOOL_REGION = "read_region_text"
+        private const val HINT_FAST =
+            "【快速模式】速度优先：尽量少调用工具；简单任务不要每一步都读屏确认，可以在同一轮里连续调用多个工具（比如连续多次点击），只在关键步骤或拿不准时才读屏；回答要简短。"
+        private const val HINT_ACCURATE =
+            "【高准确度模式】准确比速度重要：操作前先读屏确认当前界面；每一步操作后必须再读屏确认结果；回答问题前先读完整道题和所有选项，逐项分析，不要凭印象；" +
+                "小字、数字、细节用 read_region_text 放大读取；给出答案前自己再核对一遍，发现矛盾就重新读屏。"
+        private const val SELF_CHECK =
+            "请检查你上面的回答：对照屏幕上读到的内容逐项核对，是否有错误或遗漏？如果有，请更正（需要的话可以重新读屏）；如果没有，请原样给出最终答案。只输出最终答案。"
         private const val TOOL_READ_DESC =
             "读取虚拟屏当前画面上的文字（OCR）。返回每行文字及其在画面中的归一化坐标 (x,y)：x 0=最左 1=最右，y 0=最上 1=最下。只读。"
         private const val SYSTEM_READONLY =
