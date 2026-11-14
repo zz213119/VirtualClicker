@@ -79,6 +79,14 @@
         </service>
 
         <service
+            android:name=".ai.AiKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="ai_assistant" />
+        </service>
+        <service
             android:name=".service.ScriptRunnerService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

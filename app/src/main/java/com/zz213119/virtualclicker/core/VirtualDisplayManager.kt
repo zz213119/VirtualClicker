@@ -93,7 +93,15 @@ object VirtualDisplayManager {
             .onFailure { Log.e(TAG, "setScreenOffMode failed", it) }
             .getOrDefault(false)
 
-    fun setBusy(busy: Boolean) { runCatching { service?.setBusy(busy) } }
+    /** 谁让后台服务保持“忙”（防休眠、持唤醒锁）：脚本/任务用 "script"，AI 任务用 "ai"。任意一个在忙就保持忙。 */
+    private val busyTags = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun setBusy(busy: Boolean) = setBusyTag("script", busy)
+
+    fun setBusyTag(tag: String, busy: Boolean) {
+        if (busy) busyTags.add(tag) else busyTags.remove(tag)
+        runCatching { service?.setBusy(busyTags.isNotEmpty()) }
+    }
 
     fun heartbeat() { runCatching { service?.heartbeat() } }
 

@@ -714,8 +714,7 @@ class AiSession(context: Context) {
             return "区域坐标必须是 0~1 之间，且右下要大于左上。"
         }
         val scale = a.optDouble("scale", 3.0).toFloat().coerceIn(2f, 4f)
-        val bytes = VirtualDisplayManager.captureFrame(displayId, 1920) ?: return "取帧失败（虚拟屏可能处于黑屏或已关闭）。"
-        val bmp = FrameOps.decode(bytes) ?: return "画面解码失败。"
+        val bmp = grabFrame(displayId, 1920) ?: return "屏幕是黑的：已自动重试 4 次仍然黑屏，请先 wait 几秒再试。"
         val cx0 = (x1 * bmp.width).toInt().coerceIn(0, bmp.width - 2)
         val cy0 = (y1 * bmp.height).toInt().coerceIn(0, bmp.height - 2)
         val cw = ((x2 - x1) * bmp.width).toInt().coerceIn(2, bmp.width - cx0)
@@ -732,9 +731,21 @@ class AiSession(context: Context) {
         }
     }
 
+    /** 取一帧；取不到或整帧是黑的（虚拟屏刚休眠/刚唤醒）就等一会儿重试，最多 4 次。 */
+    private fun grabFrame(displayId: Int, width: Int): Bitmap? {
+        repeat(4) { attempt ->
+            val bytes = VirtualDisplayManager.captureFrame(displayId, width)
+            val bmp = bytes?.let { FrameOps.decode(it) }
+            if (bmp != null && FrameOps.meanLuma(bmp) > 3f) return bmp
+            if (stopFlag) return null
+            LogWriter.write("AI", "frame black/failed, retry #${attempt + 1}")
+            Thread.sleep(1200)
+        }
+        return null
+    }
+
     private fun readScreen(displayId: Int): String {
-        val bytes = VirtualDisplayManager.captureFrame(displayId, frameWidth()) ?: return "取帧失败（虚拟屏可能处于黑屏或已关闭）。"
-        val bmp = FrameOps.decode(bytes) ?: return "画面解码失败。"
+        val bmp = grabFrame(displayId, frameWidth()) ?: return "屏幕是黑的：虚拟屏可能刚从休眠中恢复，已自动重试 4 次仍然黑屏。请先调用 wait 等 3 秒再读一次，仍然不行再告诉用户。"
         val lines = runCatching { GameOcr.read(bmp) }.getOrElse { return "文字识别失败：${it.message}" }
         LogWriter.write("AI", "tool $TOOL_READ lines=${lines.size}")
         if (lines.isEmpty()) return "(没有识别到文字)"
@@ -843,11 +854,13 @@ class AiSession(context: Context) {
         private const val TOOL_READ_DESC =
             "读取虚拟屏当前画面上的文字（OCR）。返回每行文字及其在画面中的归一化坐标 (x,y)：x 0=最左 1=最右，y 0=最上 1=最下。只读。"
         private const val SYSTEM_READONLY =
-            "你是一个只读的屏幕助手，能看到的只有用户的“虚拟屏”（里面运行着某个应用或游戏）。需要了解屏幕内容时，调用 read_screen_text 工具读取文字。你不能点击或操作屏幕，只能观察和回答。请用简洁的中文回答。"
+            "你是一个只读的屏幕助手，能看到的只有用户的“虚拟屏”（里面运行着某个应用或游戏）。需要了解屏幕内容时，调用 read_screen_text 工具读取文字。你不能点击或操作屏幕，只能观察和回答。" +
+                "如果读到的是黑屏，多半是虚拟屏刚从休眠恢复：先等几秒再读，不要立刻放弃。请用简洁的中文回答。"
         private const val SYSTEM_CONTROL =
             "你是一个屏幕助手，只能看到并操作用户的“虚拟屏”（里面运行着某个应用或游戏），不能碰手机本体屏幕。" +
                 "用 read_screen_text 读取画面文字和位置，用 tap / long_press / swipe 操作，用 wait 等待加载。" +
                 "每做一步操作后，再用 read_screen_text 确认结果，不要盲目连续操作。" +
+                "如果读到的是黑屏，多半是虚拟屏刚从休眠恢复：先用 wait 等 3 秒再读，最多重试几次，不要一遇到黑屏就放弃。" +
                 "不要进行付费、购买、删除、转账、授权登录等不可逆操作，除非用户明确要求；拿不准时先问用户。" +
                 "用户要求把操作保存成脚本时，调用 save_script（用户说“间隔 0.5 秒”就把 wait_ms 设为 500；要改间隔就用同名再保存一次并设 overwrite=true）。请用简洁的中文回答。"
     }
