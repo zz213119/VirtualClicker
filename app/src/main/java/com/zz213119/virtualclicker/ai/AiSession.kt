@@ -59,6 +59,8 @@ class AiSession(context: Context) {
     private val recorded = ArrayList<Rec>()
     private var taskNo = 0
     private var toolUsed = false
+    private var modelMs = 0L
+    private var toolMs = 0L
     private var selfChecked = false
     /** 模型不支持“推理/思考”这类额外参数时记一下，之后不再带（避免每次多失败一次）。 */
     private var extrasUnsupportedFor = ""
@@ -147,6 +149,9 @@ class AiSession(context: Context) {
         stopFlag = false
         actionCount = 0
         taskNo++
+        modelMs = 0L
+        toolMs = 0L
+        val askStart = System.currentTimeMillis()
         toolUsed = false
         selfChecked = false
         val format = AiConfig.format(ctx)
@@ -192,6 +197,7 @@ class AiSession(context: Context) {
             Result("出错：${e.message ?: e.javaClass.simpleName}", Outcome.ERROR)
         }
         stripImages()
+        LogWriter.write("AI", "timing mode=${AiConfig.mode(ctx)} total=${System.currentTimeMillis() - askStart}ms model=${modelMs}ms tools=${toolMs}ms outcome=${result.outcome}")
         emit("AI：${result.text}\n\n")
         saveNow()
         status("")
@@ -228,8 +234,9 @@ class AiSession(context: Context) {
                 .put("tools", openAiTools())
             val charsNow = history.toString().length
             status("请求中…")
-            val useExtras = AiConfig.mode(ctx) == AiConfig.MODE_ACCURATE && extrasUnsupportedFor != model
-            if (useExtras) body.put("reasoning_effort", "high")
+            val effort = when (AiConfig.mode(ctx)) { AiConfig.MODE_ACCURATE -> "high"; AiConfig.MODE_FAST -> "low"; else -> null }
+            val useExtras = effort != null && extrasUnsupportedFor != model
+            if (useExtras) body.put("reasoning_effort", effort)
             val resp = try {
                 post(url, mapOf("Authorization" to "Bearer $key"), body)
             } catch (e: IOException) {
@@ -549,6 +556,21 @@ class AiSession(context: Context) {
                 listOf("x1", "y1", "x2", "y2"))
             l += ToolDef("wait", "等待一段时间再继续（比如等加载），最多 10 秒。",
                 JSONObject().put("ms", num("等待毫秒数")), listOf("ms"))
+            if (fast()) {
+                val item = JSONObject().put("type", "object")
+                    .put("properties", JSONObject()
+                        .put("type", str("tap / long_press / swipe / wait"))
+                        .put("x", num("tap、long_press 的横向 0~1")).put("y", num("tap、long_press 的纵向 0~1"))
+                        .put("x1", num("swipe 起点横向")).put("y1", num("swipe 起点纵向"))
+                        .put("x2", num("swipe 终点横向")).put("y2", num("swipe 终点纵向"))
+                        .put("duration_ms", num("long_press / swipe 时长，毫秒"))
+                        .put("ms", num("wait 的毫秒数")))
+                    .put("required", JSONArray().put("type"))
+                l += ToolDef("batch_actions",
+                    "一次提交多个操作（按顺序执行，任何一步失败就停下），用于界面稳定、步骤明确的情况，比逐个调用快得多。最多 30 步。执行完会附上最后的屏幕文字。坐标均为 0~1 的归一化坐标。",
+                    JSONObject().put("actions", JSONObject().put("type", "array").put("description", "按顺序执行的操作列表").put("items", item)),
+                    listOf("actions"))
+            }
             l += ToolDef("save_script",
                 "把本对话里你已经执行过的点击/长按/滑动/等待保存成一个脚本，用户之后可以在脚本编辑器里查看、修改和运行。" +
                     "会在相邻的操作之间自动加入固定的等待（wait_ms，毫秒；用户说“0.5 秒”就填 500，说“不要间隔”就填 0）。" +
@@ -580,6 +602,15 @@ class AiSession(context: Context) {
     }
 
     private fun runTool(name: String, args: JSONObject, displayId: Int): String {
+        val t0 = System.currentTimeMillis()
+        try {
+            return runToolInner(name, args, displayId)
+        } finally {
+            toolMs += System.currentTimeMillis() - t0
+        }
+    }
+
+    private fun runToolInner(name: String, args: JSONObject, displayId: Int): String {
         if (stopFlag) return "用户已停止。"
         toolUsed = true
         if (displayId < 0) return "当前没有虚拟屏，无法操作。"
@@ -591,7 +622,27 @@ class AiSession(context: Context) {
                 val limit = AiConfig.maxActions(ctx)
                 actionCount++
                 if (limit > 0 && actionCount > limit) return "已达到单次提问的操作上限（$limit 次），请让用户确认后再继续。"
-                act(name, args, displayId)
+                val r = act(name, args, displayId)
+                // 快速模式：操作完直接附上操作后的屏幕文字，省掉模型再单独调一次读屏（少一次请求往返）
+                if (fast() && r.startsWith("已")) r + "\n【操作后的屏幕文字】\n" + readScreen(displayId) else r
+            }
+            "batch_actions" -> {
+                if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏（设置里的“允许 AI 操作虚拟屏”是关闭的）。"
+                val arr = args.optJSONArray("actions") ?: return "缺少 actions 数组。"
+                val limit = AiConfig.maxActions(ctx)
+                val sb = StringBuilder()
+                for (i in 0 until minOf(arr.length(), 30)) {
+                    if (stopFlag) { sb.append("用户已停止。\n"); break }
+                    val it = arr.optJSONObject(i) ?: continue
+                    val t = it.optString("type")
+                    if (t != "tap" && t != "long_press" && t != "swipe" && t != "wait") { sb.append("第${i + 1}步：类型无效（$t）\n"); break }
+                    actionCount++
+                    if (limit > 0 && actionCount > limit) { sb.append("已达到单次提问的操作上限（$limit 次）。\n"); break }
+                    val r = act(t, it, displayId)
+                    sb.append("第${i + 1}步 $t：$r\n")
+                    if (!r.startsWith("已")) break
+                }
+                sb.toString() + (if (fast()) "【操作后的屏幕文字】\n" + readScreen(displayId) else "")
             }
             "save_script" -> {
                 if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏，也就没有可保存的操作。"
@@ -639,6 +690,8 @@ class AiSession(context: Context) {
 
     fun hasRecorded(): Boolean = recorded.isNotEmpty()
 
+    private fun fast() = AiConfig.mode(ctx) == AiConfig.MODE_FAST
+
     private fun frameWidth() = when (AiConfig.mode(ctx)) {
         AiConfig.MODE_FAST -> 960       // 快速：小一点，取帧和识别都更快
         AiConfig.MODE_ACCURATE -> 1920  // 高准确度：尽量用原分辨率
@@ -676,7 +729,7 @@ class AiSession(context: Context) {
         val lines = runCatching { GameOcr.read(bmp) }.getOrElse { return "文字识别失败：${it.message}" }
         LogWriter.write("AI", "tool $TOOL_READ lines=${lines.size}")
         if (lines.isEmpty()) return "(没有识别到文字)"
-        return lines.take(150).joinToString("\n") { "%s (%.2f,%.2f)".format(it.text, it.cx, it.cy) }
+        return lines.take(if (fast()) 80 else 150).joinToString("\n") { "%s (%.2f,%.2f)".format(it.text, it.cx, it.cy) }
     }
 
     private fun act(name: String, a: JSONObject, displayId: Int): String {
@@ -737,6 +790,15 @@ class AiSession(context: Context) {
 
     // ---------------- HTTP ----------------
     private fun post(url: String, headers: Map<String, String>, body: JSONObject): JSONObject {
+        val t0 = System.currentTimeMillis()
+        try {
+            return postInner(url, headers, body)
+        } finally {
+            modelMs += System.currentTimeMillis() - t0
+        }
+    }
+
+    private fun postInner(url: String, headers: Map<String, String>, body: JSONObject): JSONObject {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 20_000
@@ -761,7 +823,8 @@ class AiSession(context: Context) {
         private const val TOOL_READ = "read_screen_text"
         private const val TOOL_REGION = "read_region_text"
         private const val HINT_FAST =
-            "【快速模式】速度优先：尽量少调用工具；简单任务不要每一步都读屏确认，可以在同一轮里连续调用多个工具（比如连续多次点击），只在关键步骤或拿不准时才读屏；回答要简短。"
+            "【快速模式】速度优先，目标是用最少的请求往返完成任务：每次操作后系统会自动附上操作后的屏幕文字，不需要再单独调用 read_screen_text；" +
+                "界面稳定、步骤明确时，用 batch_actions 一次提交多个操作（或在同一轮里连续调用多个工具）；只在拿不准时才多读一次；回答要简短，不要复述屏幕内容。"
         private const val HINT_ACCURATE =
             "【高准确度模式】准确比速度重要：操作前先读屏确认当前界面；每一步操作后必须再读屏确认结果；回答问题前先读完整道题和所有选项，逐项分析，不要凭印象；" +
                 "小字、数字、细节用 read_region_text 放大读取；给出答案前自己再核对一遍，发现矛盾就重新读屏。"
