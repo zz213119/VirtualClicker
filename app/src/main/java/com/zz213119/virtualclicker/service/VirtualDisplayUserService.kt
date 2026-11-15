@@ -221,6 +221,60 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }
     }
 
+    // ---- 静音虚拟屏里的应用 ----
+    // Android 没法按“屏幕”静音，只能按应用静音：把应用的 AppOps PLAY_AUDIO 设为 ignore（应用照常运行，只是被静音），
+    // 虚拟屏关闭 / 应用被停止 / 后台服务退出时恢复为 default。已静音的包名写到文件里，后台进程异常退出后下次启动会补恢复。
+    @Volatile private var muteVirtualApps = false
+    private val mutedPkgs = ConcurrentHashMap.newKeySet<String>()
+    private val muteFile = File("/data/local/tmp/vc_muted_pkgs")
+
+    init {
+        Thread {
+            runCatching {
+                Thread.sleep(3000)
+                restoreLeftoverMutes()
+            }
+        }.start()
+    }
+
+    private fun persistMuted() {
+        runCatching { if (mutedPkgs.isEmpty()) muteFile.delete() else muteFile.writeText(mutedPkgs.joinToString("\n")) }
+    }
+
+    private fun muteApp(pkg: String) {
+        if (!muteVirtualApps) return
+        val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "ignore").trim()
+        mutedPkgs.add(pkg)
+        persistMuted()
+        appendLog("MUTE APP", "pkg=$pkg output=$out")
+    }
+
+    private fun restoreApp(pkg: String) {
+        if (!mutedPkgs.remove(pkg)) return
+        val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "default").trim()
+        persistMuted()
+        appendLog("UNMUTE APP", "pkg=$pkg output=$out")
+    }
+
+    private fun restoreAllMuted() {
+        mutedPkgs.toList().forEach { restoreApp(it) }
+    }
+
+    private fun restoreLeftoverMutes() {
+        val leftover = runCatching { muteFile.readText() }.getOrDefault("")
+            .lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (leftover.isEmpty()) return
+        leftover.forEach { shellText("cmd", "appops", "set", it, "PLAY_AUDIO", "default") }
+        runCatching { muteFile.delete() }
+        appendLog("UNMUTE LEFTOVER", leftover.joinToString(","))
+    }
+
+    override fun setMuteVirtualApps(enabled: Boolean) {
+        muteVirtualApps = enabled
+        appendLog("MUTE SETTING", "enabled=$enabled")
+        if (enabled) launchedPackages.values.toList().forEach { muteApp(it) } else restoreAllMuted()
+    }
+
     override fun launchApp(packageName: String, displayId: Int): Boolean {
         val activity = resolveLaunchActivity(packageName)
         if (activity == null) {
@@ -457,6 +511,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             appendLog("STOP APP", "no launched package on displayId=$displayId")
             return false
         }
+        restoreApp(pkg)
         val out = shellText("am", "force-stop", pkg).trim()
         appendLog("STOP APP", "displayId=$displayId pkg=$pkg output=$out")
         return true
@@ -677,6 +732,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
             // 等旧进程真正退出，避免新进程和正在退出的旧进程撞车
             waitProcessGone(packageName, 3000)
             Thread.sleep(500)
+            muteApp(packageName)   // 设置里开了“静音虚拟屏内应用”时，启动前先静音，开机的声音也不会漏出来
 
             // resolveLaunchActivity() may already return a fully-qualified
             // component such as com.example.app/.MainActivity. Avoid
@@ -925,6 +981,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         // 释放前先强杀这块屏上启动的应用：否则销毁虚拟屏时它的任务会被系统挪回主屏残留，
         // 反复开关后残留任务/进程越积越多。
         launchedPackages.remove(displayId)?.let { pkg ->
+            restoreApp(pkg)
             runCatching {
                 val pr = ProcessBuilder("am", "force-stop", pkg).redirectErrorStream(true).start()
                 pr.inputStream.bufferedReader().readText()
@@ -1182,6 +1239,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     override fun destroy() {
+        restoreAllMuted()
         if (screenOffActive) runCatching { setScreenOffMode(false) }
         val ids = (displays.keys + sinks.keys).toSet()
         ids.forEach { cleanupDisplay(it, "user_service_destroy") }

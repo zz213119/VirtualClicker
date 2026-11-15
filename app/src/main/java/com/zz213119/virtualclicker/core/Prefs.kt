@@ -31,6 +31,8 @@ object Prefs {
     fun notifyEnabled(c: Context) = sp(c).getBoolean("notify", true)
     fun cpuWakeLock(c: Context) = sp(c).getBoolean("cpu_wakelock", true)
     fun keepDisplayAwake(c: Context) = sp(c).getBoolean("keep_display_awake", true)
+    /** 虚拟屏启动应用时静音该应用（只影响虚拟屏里的应用，主屏其它应用声音正常）。默认关闭。 */
+    fun muteVirtualApps(c: Context) = sp(c).getBoolean("mute_virtual_apps", false)
     fun idleCloseMinutes(c: Context): Int = sp(c).getInt("idle_close_min", 10).coerceIn(0, 720)
     fun setIdleCloseMinutes(c: Context, m: Int) = sp(c).edit().putInt("idle_close_min", m.coerceIn(0, 720)).apply()
     fun oneClickMode(c: Context) = sp(c).getBoolean("one_click_mode", false)

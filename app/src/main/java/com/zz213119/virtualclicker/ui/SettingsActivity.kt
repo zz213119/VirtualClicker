@@ -136,6 +136,9 @@ class SettingsActivity : AppCompatActivity() {
         bindSwitch(R.id.switchKeepAwake, "keep_display_awake", Prefs.keepDisplayAwake(this)) {
             VirtualDisplayManager.setKeepDisplayAwake(it)
         }
+        bindSwitch(R.id.switchMuteVirtual, "mute_virtual_apps", Prefs.muteVirtualApps(this)) {
+            VirtualDisplayManager.setMuteVirtualApps(it)
+        }
         bindSwitch(R.id.switchAutoScreenOff, "auto_screen_off", Prefs.autoScreenOff(this))
         bindSwitch(R.id.switchDebug, "show_debug_tools", Prefs.showDebugTools(this))
 

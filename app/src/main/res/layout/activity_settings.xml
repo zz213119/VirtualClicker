@@ -250,6 +250,15 @@
             android:textSize="14sp" />
 
         <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchMuteVirtual"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="44dp"
+            android:text="虚拟屏启动时静音其中的应用（主屏其它应用声音正常；该应用在虚拟屏运行期间整体静音，关闭虚拟屏后自动恢复）"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchAutoScreenOff"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

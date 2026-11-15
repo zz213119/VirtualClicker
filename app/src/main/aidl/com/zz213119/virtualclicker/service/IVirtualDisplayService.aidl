@@ -89,6 +89,9 @@ interface IVirtualDisplayService {
     // Whether to hold a per-display screen wake lock for launched virtual displays.
     void setKeepDisplayAwake(boolean enabled);
 
+    // 静音虚拟屏里启动的应用（AppOps PLAY_AUDIO=ignore）；关闭虚拟屏/应用时自动恢复。主屏其它应用的声音不受影响。
+    void setMuteVirtualApps(boolean enabled);
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }
