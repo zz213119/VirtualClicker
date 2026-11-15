@@ -59,6 +59,8 @@ class AiSession(context: Context) {
     private val recorded = ArrayList<Rec>()
     private var taskNo = 0
     private var toolUsed = false
+    /** 每次提问里无法存进脚本的操作数（输入文字、按键），保存脚本时提醒用户。 */
+    private val unsaved = HashMap<Int, Int>()
     private var modelMs = 0L
     private var toolMs = 0L
     private var selfChecked = false
@@ -565,10 +567,20 @@ class AiSession(context: Context) {
                 listOf("x1", "y1", "x2", "y2"))
             l += ToolDef("wait", "等待一段时间再继续（比如等加载），最多 10 秒。",
                 JSONObject().put("ms", num("等待毫秒数")), listOf("ms"))
+            l += ToolDef("type_text",
+                "在虚拟屏里当前获得焦点的输入框输入文字（支持中文）。必须先 tap 点一下输入框让它获得焦点。可选先清空输入框、输入后按回车（比如搜索）。",
+                JSONObject().put("text", str("要输入的文字，最多 500 字"))
+                    .put("clear_first", bool("输入前先全选并删除原有内容，默认 false"))
+                    .put("press_enter", bool("输入后按一下回车（提交搜索等），默认 false")),
+                listOf("text"))
+            l += ToolDef("press_key", "按一个按键：enter（回车）/ back（返回）/ delete（删除）/ tab / search。",
+                JSONObject().put("key", str("enter / back / delete / tab / search")), listOf("key"))
             if (fast()) {
                 val item = JSONObject().put("type", "object")
                     .put("properties", JSONObject()
-                        .put("type", str("tap / long_press / swipe / wait"))
+                        .put("type", str("tap / long_press / swipe / wait / type_text / press_key"))
+                        .put("text", str("type_text 要输入的文字")).put("clear_first", bool("type_text 输入前是否先清空"))
+                        .put("press_enter", bool("type_text 输入后是否按回车")).put("key", str("press_key 的按键名"))
                         .put("x", num("tap、long_press 的横向 0~1")).put("y", num("tap、long_press 的纵向 0~1"))
                         .put("x1", num("swipe 起点横向")).put("y1", num("swipe 起点纵向"))
                         .put("x2", num("swipe 终点横向")).put("y2", num("swipe 终点纵向"))
@@ -626,7 +638,7 @@ class AiSession(context: Context) {
         return when (name) {
             TOOL_READ -> readScreen(displayId)
             TOOL_REGION -> readRegion(displayId, args)
-            "tap", "long_press", "swipe", "wait" -> {
+            "tap", "long_press", "swipe", "wait", "type_text", "press_key" -> {
                 if (!Prefs.aiControl(ctx)) return "没有被允许操作虚拟屏（设置里的“允许 AI 操作虚拟屏”是关闭的）。"
                 val limit = AiConfig.maxActions(ctx)
                 actionCount++
@@ -644,7 +656,7 @@ class AiSession(context: Context) {
                     if (stopFlag) { sb.append("用户已停止。\n"); break }
                     val it = arr.optJSONObject(i) ?: continue
                     val t = it.optString("type")
-                    if (t != "tap" && t != "long_press" && t != "swipe" && t != "wait") { sb.append("第${i + 1}步：类型无效（$t）\n"); break }
+                    if (t != "tap" && t != "long_press" && t != "swipe" && t != "wait" && t != "type_text" && t != "press_key") { sb.append("第${i + 1}步：类型无效（$t）\n"); break }
                     actionCount++
                     if (limit > 0 && actionCount > limit) { sb.append("已达到单次提问的操作上限（$limit 次）。\n"); break }
                     val r = act(t, it, displayId)
@@ -690,7 +702,9 @@ class AiSession(context: Context) {
         if (ScriptRepository.exists(ctx, n) && !overwrite) return "已存在同名脚本「$n」。换一个名字，或者设置 overwrite=true 覆盖。"
         ScriptRepository.saveOrUpdate(ctx, ScriptDefinition(name = n, repeatCount = 1, actions = out))
         val waits = out.count { it.type == ScriptActionType.WAIT }
-        val msg = "已保存脚本「$n」：共 ${out.size} 个动作（其中等待 $waits 个），自动间隔 ${wait} 毫秒。可以在脚本编辑器里查看、修改和运行。"
+        val skipped = src.maxOfOrNull { it.task }?.let { unsaved[it] } ?: 0
+        val msg = "已保存脚本「$n」：共 ${out.size} 个动作（其中等待 $waits 个），自动间隔 ${wait} 毫秒。可以在脚本编辑器里查看、修改和运行。" +
+            if (skipped > 0) "注意：这次还有 $skipped 个输入文字/按键操作无法保存进脚本，回放时需要自己补上。" else ""
         emit("  · $msg\n")
         LogWriter.write("AI", "save_script name=$n actions=${out.size} wait=$wait scope=$scope")
         saveNow()
@@ -752,6 +766,22 @@ class AiSession(context: Context) {
         return lines.take(if (fast()) 80 else 150).joinToString("\n") { "%s (%.2f,%.2f)".format(it.text, it.cx, it.cy) }
     }
 
+    /** 含中文等非 ASCII 文字：写进剪贴板，再给输入框发 Ctrl+V（不行就发粘贴键）。会覆盖用户当前的剪贴板内容。 */
+    private fun pasteViaClipboard(displayId: Int, text: String): Boolean {
+        val ok = runCatching {
+            (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("vc_ai", text))
+        }.isSuccess
+        if (!ok) {
+            LogWriter.write("AI", "set clipboard failed")
+            return false
+        }
+        Thread.sleep(150)
+        val done = VirtualDisplayManager.pressCombo(displayId, intArrayOf(113, 50)) || VirtualDisplayManager.pressKey(displayId, 279)
+        LogWriter.write("AI", "paste via clipboard chars=${text.length} ok=$done")
+        return done
+    }
+
     private fun act(name: String, a: JSONObject, displayId: Int): String {
         val size = VirtualDisplayManager.displaySize(displayId) ?: return "拿不到虚拟屏尺寸，操作失败。"
         val w = size[0].toFloat()
@@ -785,6 +815,36 @@ class AiSession(context: Context) {
                 if (done) recorded.add(Rec("SWIPE", x1, y1, x2, y2, d.toLong(), size[0], size[1], taskNo))
                 emit("  · 滑动 (%.2f, %.2f)→(%.2f, %.2f)\n".format(x1, y1, x2, y2))
                 r = if (done) "已滑动" else "滑动失败"
+            }
+            "type_text" -> {
+                val text = a.optString("text")
+                if (text.isEmpty()) return "text 不能为空。"
+                if (text.length > 500) return "文字太长（最多 500 字）。"
+                if (a.optBoolean("clear_first", false)) {
+                    VirtualDisplayManager.pressCombo(displayId, intArrayOf(113, 29))   // Ctrl+A
+                    Thread.sleep(80)
+                    VirtualDisplayManager.pressKey(displayId, 67)                      // 删除
+                    Thread.sleep(80)
+                }
+                val ascii = text.all { it.code in 32..126 }
+                val done = if (ascii) VirtualDisplayManager.inputText(displayId, text) else pasteViaClipboard(displayId, text)
+                unsaved[taskNo] = (unsaved[taskNo] ?: 0) + 1
+                emit("  · 输入文字：${text.take(30)}${if (text.length > 30) "…" else ""}\n")
+                if (done && a.optBoolean("press_enter", false)) {
+                    Thread.sleep(150)
+                    VirtualDisplayManager.pressKey(displayId, 66)
+                    emit("  · 回车\n")
+                }
+                r = if (done) "已输入" else "输入失败：请确认输入框已经获得焦点（先 tap 点一下输入框再试）。"
+            }
+            "press_key" -> {
+                val k = a.optString("key").lowercase()
+                val code = when (k) { "enter" -> 66; "back" -> 4; "delete" -> 67; "tab" -> 61; "search" -> 84; else -> -1 }
+                if (code < 0) return "不支持的按键：$k（可用：enter / back / delete / tab / search）"
+                val done = VirtualDisplayManager.pressKey(displayId, code)
+                unsaved[taskNo] = (unsaved[taskNo] ?: 0) + 1
+                emit("  · 按键 $k\n")
+                r = if (done) "已按下 $k" else "按键失败"
             }
             else -> {
                 val ms = a.optInt("ms", 1000).coerceIn(100, 10_000)
@@ -860,6 +920,7 @@ class AiSession(context: Context) {
             "你是一个屏幕助手，只能看到并操作用户的“虚拟屏”（里面运行着某个应用或游戏），不能碰手机本体屏幕。" +
                 "用 read_screen_text 读取画面文字和位置，用 tap / long_press / swipe 操作，用 wait 等待加载。" +
                 "每做一步操作后，再用 read_screen_text 确认结果，不要盲目连续操作。" +
+                "输入文字：先 tap 点一下输入框让它获得焦点，再用 type_text（支持中文，可设 press_enter 直接搜索）；用 press_key 按回车、返回、删除。" +
                 "如果读到的是黑屏，多半是虚拟屏刚从休眠恢复：先用 wait 等 3 秒再读，最多重试几次，不要一遇到黑屏就放弃。" +
                 "不要进行付费、购买、删除、转账、授权登录等不可逆操作，除非用户明确要求；拿不准时先问用户。" +
                 "用户要求把操作保存成脚本时，调用 save_script（用户说“间隔 0.5 秒”就把 wait_ms 设为 500；要改间隔就用同名再保存一次并设 overwrite=true）。请用简洁的中文回答。"

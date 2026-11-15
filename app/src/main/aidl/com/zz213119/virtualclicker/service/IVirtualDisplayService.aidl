@@ -92,6 +92,11 @@ interface IVirtualDisplayService {
     // 静音虚拟屏里启动的应用（AppOps PLAY_AUDIO=ignore）；关闭虚拟屏/应用时自动恢复。主屏其它应用的声音不受影响。
     void setMuteVirtualApps(boolean enabled);
 
+    // 输入文字 / 按键（作用于指定虚拟屏里当前获得焦点的输入框）
+    boolean inputText(int displayId, String text);          // 仅 ASCII 可打印字符（走 input text）
+    boolean pressKey(int displayId, int keyCode);           // 单个按键，如 66=回车 4=返回 67=删除
+    boolean pressCombo(int displayId, in int[] keyCodes);   // 组合键，如 Ctrl+V = [113, 50]
+
     // Called by Shizuku when the UserService is torn down.
     void destroy();
 }

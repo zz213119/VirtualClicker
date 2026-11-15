@@ -275,6 +275,43 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         if (enabled) launchedPackages.values.toList().forEach { muteApp(it) } else restoreAllMuted()
     }
 
+    // ---- 输入文字 / 按键 ----
+    private fun runInput(vararg cmd: String): Boolean = runCatching {
+        val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
+        val out = pr.inputStream.bufferedReader().readText()
+        val code = pr.waitFor()
+        val bad = code != 0 || out.contains("Exception", ignoreCase = true) || out.contains("Unknown command", ignoreCase = true) || out.contains("Error:", ignoreCase = true)
+        if (bad) appendLog("INPUT FAILED", "cmd=${cmd.joinToString(" ").take(120)} exit=$code out=${out.trim().take(200)}")
+        !bad
+    }.getOrDefault(false)
+
+    override fun inputText(displayId: Int, text: String): Boolean {
+        if (text.isEmpty()) return false
+        // input text：空格要写成 %s；只支持 ASCII 可打印字符。分块发送，避免参数过长。
+        val safe = text.filter { it.code in 32..126 }
+        var ok = true
+        safe.chunked(80).forEach { part ->
+            ok = runInput("input", "-d", displayId.toString(), "text", part.replace("%", "%%").replace(" ", "%s")) && ok
+        }
+        appendLog("INPUT TEXT", "displayId=$displayId chars=${safe.length} ok=$ok")
+        return ok
+    }
+
+    override fun pressKey(displayId: Int, keyCode: Int): Boolean {
+        val ok = runInput("input", "-d", displayId.toString(), "keyevent", keyCode.toString())
+        appendLog("PRESS KEY", "displayId=$displayId key=$keyCode ok=$ok")
+        return ok
+    }
+
+    override fun pressCombo(displayId: Int, keyCodes: IntArray): Boolean {
+        if (keyCodes.isEmpty()) return false
+        val cmd = mutableListOf("input", "-d", displayId.toString(), "keycombination")
+        keyCodes.forEach { cmd.add(it.toString()) }
+        val ok = runInput(*cmd.toTypedArray())
+        appendLog("PRESS COMBO", "displayId=$displayId keys=${keyCodes.joinToString("+")} ok=$ok")
+        return ok
+    }
+
     override fun launchApp(packageName: String, displayId: Int): Boolean {
         val activity = resolveLaunchActivity(packageName)
         if (activity == null) {
