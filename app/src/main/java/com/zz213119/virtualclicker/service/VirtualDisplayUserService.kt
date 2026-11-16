@@ -228,11 +228,20 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     private val mutedPkgs = ConcurrentHashMap.newKeySet<String>()
     private val muteFile = File("/data/local/tmp/vc_muted_pkgs")
 
+    private val muteLock = Any()
+    private val leftoverDone = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** 上一个后台进程异常退出时没来得及恢复的静音：本进程里只补恢复一次，而且在第一次静音之前做，避免把刚静音的应用又恢复了。 */
+    private fun ensureLeftoverRestored() {
+        if (!leftoverDone.compareAndSet(false, true)) return
+        synchronized(muteLock) { restoreLeftoverMutes() }
+    }
+
     init {
         Thread {
             runCatching {
-                Thread.sleep(3000)
-                restoreLeftoverMutes()
+                Thread.sleep(1500)
+                ensureLeftoverRestored()
             }
         }.start()
     }
@@ -243,17 +252,22 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     private fun muteApp(pkg: String) {
         if (!muteVirtualApps) return
-        val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "ignore").trim()
-        mutedPkgs.add(pkg)
-        persistMuted()
-        appendLog("MUTE APP", "pkg=$pkg output=$out")
+        ensureLeftoverRestored()   // 必须先处理上次遗留，再静音（之前遗留恢复在静音之后 3 秒才跑，把刚静音的应用又恢复了）
+        synchronized(muteLock) {
+            val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "ignore").trim()
+            mutedPkgs.add(pkg)
+            persistMuted()
+            appendLog("MUTE APP", "pkg=$pkg output=$out")
+        }
     }
 
     private fun restoreApp(pkg: String) {
-        if (!mutedPkgs.remove(pkg)) return
-        val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "default").trim()
-        persistMuted()
-        appendLog("UNMUTE APP", "pkg=$pkg output=$out")
+        synchronized(muteLock) {
+            if (!mutedPkgs.remove(pkg)) return
+            val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "default").trim()
+            persistMuted()
+            appendLog("UNMUTE APP", "pkg=$pkg output=$out")
+        }
     }
 
     private fun restoreAllMuted() {
@@ -262,17 +276,22 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     private fun restoreLeftoverMutes() {
         val leftover = runCatching { muteFile.readText() }.getOrDefault("")
-            .lines().map { it.trim() }.filter { it.isNotEmpty() }
+            .lines().map { it.trim() }.filter { it.isNotEmpty() && it !in mutedPkgs }   // 本进程正在静音的不动
         if (leftover.isEmpty()) return
         leftover.forEach { shellText("cmd", "appops", "set", it, "PLAY_AUDIO", "default") }
-        runCatching { muteFile.delete() }
+        persistMuted()
         appendLog("UNMUTE LEFTOVER", leftover.joinToString(","))
     }
 
     override fun setMuteVirtualApps(enabled: Boolean) {
         muteVirtualApps = enabled
         appendLog("MUTE SETTING", "enabled=$enabled")
-        if (enabled) launchedPackages.values.toList().forEach { muteApp(it) } else restoreAllMuted()
+        if (enabled) launchedPackages.values.toList().forEach { muteApp(it) }
+        else {
+            // 关掉开关 = 一键恢复：本进程静音的 + 上次遗留的，全部恢复成 default
+            ensureLeftoverRestored()
+            restoreAllMuted()
+        }
     }
 
     // ---- 输入文字 / 按键 ----
