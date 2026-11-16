@@ -250,23 +250,42 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         runCatching { if (mutedPkgs.isEmpty()) muteFile.delete() else muteFile.writeText(mutedPkgs.joinToString("\n")) }
     }
 
+    /** 读出该应用 PLAY_AUDIO 当前的模式文本，例如 "PLAY_AUDIO: ignore"；没有记录时是 "No operations." */
+    private fun audioMode(pkg: String): String =
+        shellText("cmd", "appops", "get", pkg, "PLAY_AUDIO").trim().replace("\n", " ").take(120)
+
+    /**
+     * 把 PLAY_AUDIO 恢复正常，并且检查结果：先设 default；如果读回来仍然是 ignore/deny（实测有的手机 default 撤销不掉 ignore），
+     * 再显式设成 allow。返回最终状态文本，写进日志，方便确认到底恢复没有。
+     */
+    private fun resetAudioOp(pkg: String): String {
+        shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "default")
+        var m = audioMode(pkg)
+        if (m.contains("ignore", true) || m.contains("deny", true) || m.contains("errored", true)) {
+            shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "allow")
+            m = "after-allow: " + audioMode(pkg)
+        }
+        return m
+    }
+
     private fun muteApp(pkg: String) {
         if (!muteVirtualApps) return
         ensureLeftoverRestored()   // 必须先处理上次遗留，再静音（之前遗留恢复在静音之后 3 秒才跑，把刚静音的应用又恢复了）
         synchronized(muteLock) {
+            val before = audioMode(pkg)
             val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "ignore").trim()
             mutedPkgs.add(pkg)
             persistMuted()
-            appendLog("MUTE APP", "pkg=$pkg output=$out")
+            appendLog("MUTE APP", "pkg=$pkg before=[$before] output=$out now=[${audioMode(pkg)}]")
         }
     }
 
     private fun restoreApp(pkg: String) {
         synchronized(muteLock) {
             if (!mutedPkgs.remove(pkg)) return
-            val out = shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "default").trim()
+            val mode = resetAudioOp(pkg)
             persistMuted()
-            appendLog("UNMUTE APP", "pkg=$pkg output=$out")
+            appendLog("UNMUTE APP", "pkg=$pkg mode=[$mode]")
         }
     }
 
@@ -278,9 +297,9 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         val leftover = runCatching { muteFile.readText() }.getOrDefault("")
             .lines().map { it.trim() }.filter { it.isNotEmpty() && it !in mutedPkgs }   // 本进程正在静音的不动
         if (leftover.isEmpty()) return
-        leftover.forEach { shellText("cmd", "appops", "set", it, "PLAY_AUDIO", "default") }
+        val modes = leftover.map { "$it=[${resetAudioOp(it)}]" }
         persistMuted()
-        appendLog("UNMUTE LEFTOVER", leftover.joinToString(","))
+        appendLog("UNMUTE LEFTOVER", modes.joinToString(" "))
     }
 
     override fun setMuteVirtualApps(enabled: Boolean) {
