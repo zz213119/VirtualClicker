@@ -1445,8 +1445,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 实验：离开页面前已把预览 SurfaceView 藏起来(onPause)，回来时重新显示，surfaceCreated 会自动把虚拟屏接回预览
-        if (::previewSurfaceView.isInitialized) previewSurfaceView.visibility = View.VISIBLE
         findViewById<android.view.View>(R.id.debugCard).visibility =
             if (Prefs.showDebugTools(this)) android.view.View.VISIBLE else android.view.View.GONE
         setupAiPanel()
@@ -1463,9 +1461,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        // 实验：按最近任务键卡 2~3 秒（主线程卡在 relayout 系统调用上，且只发生在虚拟屏开启/刚关闭时）。
-        // 在转场之前就先把预览 SurfaceView 藏掉(销毁其 Surface 并把虚拟屏从预览上摘下)，让转场时的 relayout 不再带着一个大尺寸 Surface。
-        if (::previewSurfaceView.isInitialized) previewSurfaceView.visibility = View.INVISIBLE
         uiPollJob?.cancel()
         uiPollJob = null
         // AI 对话框不在前台了：摘掉实时监听（任务在后台继续跑，回来时会重新显示完整对话）
