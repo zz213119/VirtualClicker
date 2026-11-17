@@ -1114,6 +1114,30 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }
 
         verifyDisplayReleased(displayId)
+        scheduleTaskDiag(displayId)
+    }
+
+    /**
+     * 诊断：关闭虚拟屏后按返回键要按好几下才回得了桌面（每按一次 MainActivity 先进后台又马上被拉回前台）。
+     * 怀疑系统里还留着任务，所以释放后 1/4/7 秒各记一次任务栈，看看主屏上到底留了什么。
+     */
+    private fun scheduleTaskDiag(displayId: Int) {
+        Thread {
+            runCatching {
+                var last = 0L
+                for (delayMs in longArrayOf(1000, 3000, 3000)) {
+                    Thread.sleep(delayMs)
+                    last += delayMs
+                    val text = shellText("dumpsys", "activity", "activities")
+                    val picked = text.lineSequence().filter {
+                        it.contains("Task{") || it.contains("topResumedActivity") || it.contains("ResumedActivity:") ||
+                            it.contains("mFocusedApp") || it.contains("Display #") || it.contains("mFocusedRootTask") ||
+                            it.contains("mLastFocusedRootTask")
+                    }.take(45).joinToString("\n") { it.trim().take(220) }
+                    appendLog("POST-RELEASE TASKS", "displayId=$displayId +${last}ms\n$picked")
+                }
+            }
+        }.start()
     }
 
     /**
