@@ -223,7 +223,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
 
     // ---- 静音虚拟屏里的应用 ----
     // Android 没法按“屏幕”静音，只能按应用静音：把应用的 AppOps PLAY_AUDIO 设为 ignore（应用照常运行，只是被静音），
-    // 虚拟屏关闭 / 应用被停止 / 后台服务退出时恢复为 default。已静音的包名写到文件里，后台进程异常退出后下次启动会补恢复。
+    // 虚拟屏关闭 / 应用被停止 / 后台服务退出时恢复为 allow。已静音的包名写到文件里，后台进程异常退出后下次启动会补恢复。
     @Volatile private var muteVirtualApps = false
     private val mutedPkgs = ConcurrentHashMap.newKeySet<String>()
     private val muteFile = File("/data/local/tmp/vc_muted_pkgs")
@@ -255,15 +255,17 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         shellText("cmd", "appops", "get", pkg, "PLAY_AUDIO").trim().replace("\n", " ").take(120)
 
     /**
-     * 把 PLAY_AUDIO 恢复正常，并且检查结果：先设 default；如果读回来仍然是 ignore/deny（实测有的手机 default 撤销不掉 ignore），
-     * 再显式设成 allow。返回最终状态文本，写进日志，方便确认到底恢复没有。
+     * 把 PLAY_AUDIO 恢复成“有声音”并检查结果。实测这台手机上设成 default 并不能恢复声音
+     * （日志里静音前是 allow，恢复成 default 后用户反馈仍然没声音，之前靠手动改成 allow 才恢复），
+     * 所以一律显式设成 allow，读回来不是 allow 就再设一次。返回最终状态文本，写进日志。
      */
     private fun resetAudioOp(pkg: String): String {
-        shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "default")
-        var m = audioMode(pkg)
-        if (m.contains("ignore", true) || m.contains("deny", true) || m.contains("errored", true)) {
+        var m = ""
+        for (i in 1..3) {
             shellText("cmd", "appops", "set", pkg, "PLAY_AUDIO", "allow")
-            m = "after-allow: " + audioMode(pkg)
+            m = audioMode(pkg)
+            if (m.contains("allow", true)) break
+            Thread.sleep(200)
         }
         return m
     }
@@ -307,7 +309,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         appendLog("MUTE SETTING", "enabled=$enabled")
         if (enabled) launchedPackages.values.toList().forEach { muteApp(it) }
         else {
-            // 关掉开关 = 一键恢复：本进程静音的 + 上次遗留的，全部恢复成 default
+            // 关掉开关 = 一键恢复：本进程静音的 + 上次遗留的，全部恢复成 allow
             ensureLeftoverRestored()
             restoreAllMuted()
         }

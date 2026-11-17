@@ -40,39 +40,116 @@ class VcApp : Application() {
             previous?.uncaughtException(t, e)
         }
         runCatching { logLastExit() }
+        registerLifecycleLog()
         startHangWatchdog()
     }
 
+    @Volatile private var resumedCount = 0
+    @Volatile private var lastLifecycle = "none"
+    @Volatile private var lastLifecycleAt = SystemClock.uptimeMillis()
+
+    /** 记录界面生命周期（按返回桌面 / 回到应用 / 窗口焦点），卡死日志里能对上“用户操作”的时刻。 */
+    private fun registerLifecycleLog() {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private fun mark(a: android.app.Activity, ev: String) {
+                lastLifecycle = "${a.javaClass.simpleName}.$ev"
+                lastLifecycleAt = SystemClock.uptimeMillis()
+                LogWriter.write("LIFECYCLE", lastLifecycle)
+            }
+            override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) = mark(a, "onCreate")
+            override fun onActivityStarted(a: android.app.Activity) = mark(a, "onStart")
+            override fun onActivityResumed(a: android.app.Activity) { resumedCount++; mark(a, "onResume") }
+            override fun onActivityPaused(a: android.app.Activity) { resumedCount = (resumedCount - 1).coerceAtLeast(0); mark(a, "onPause") }
+            override fun onActivityStopped(a: android.app.Activity) = mark(a, "onStop")
+            override fun onActivitySaveInstanceState(a: android.app.Activity, o: android.os.Bundle) {}
+            override fun onActivityDestroyed(a: android.app.Activity) = mark(a, "onDestroy")
+        })
+    }
+
+    /** 所有线程的堆栈（主线程多取一些，其它线程取栈顶几行），限制总长度。 */
+    private fun dumpThreads(): String {
+        val sb = StringBuilder()
+        val mainT = Looper.getMainLooper().thread
+        val all = Thread.getAllStackTraces()
+        all[mainT]?.let { st ->
+            sb.append("== main ==\n")
+            st.take(45).forEach { sb.append("    at ").append(it).append('\n') }
+        }
+        for ((t, st) in all) {
+            if (t === mainT || st.isEmpty()) continue
+            if (t.state == Thread.State.WAITING || t.state == Thread.State.TIMED_WAITING) {
+                // 空闲等待的线程只记名字，省篇幅；真正在跑 / 被锁住的才展开
+                if (st.size <= 12 && st[0].toString().let { it.contains("park") || it.contains("sleep") || it.contains("wait") || it.contains("nativePoll") }) {
+                    sb.append("== ").append(t.name).append(" (").append(t.state).append(") idle\n")
+                    continue
+                }
+            }
+            sb.append("== ").append(t.name).append(" (").append(t.state).append(") ==\n")
+            st.take(12).forEach { sb.append("    at ").append(it).append('\n') }
+            if (sb.length > 9000) { sb.append("...truncated\n"); break }
+        }
+        return sb.toString()
+    }
+
+    private fun sysInfo(): String {
+        val rt = Runtime.getRuntime()
+        val load = runCatching { java.io.File("/proc/loadavg").readText().trim() }.getOrDefault("?")
+        return "loadavg=$load heap=${(rt.totalMemory() - rt.freeMemory()) / 1048576}/${rt.maxMemory() / 1048576}MB " +
+            "foreground=${resumedCount > 0} lastLifecycle=$lastLifecycle(${SystemClock.uptimeMillis() - lastLifecycleAt}ms ago)"
+    }
+
     /**
-     * 主线程卡死监视：每 0.5 秒往主线程投一个心跳，超过 2 秒没执行就把主线程当前的堆栈写进日志（2/4/6 秒各一次），
-     * 恢复后再记一行持续时长。这样“界面突然卡死”时，日志里能直接看到主线程卡在哪一行。
+     * 主线程卡死监视：同时测两种延迟——
+     * 1) 消息延迟：每 0.5 秒往主线程投一个普通消息，多久没被执行；
+     * 2) 帧延迟：投一个 Choreographer 帧回调（前台时才算），多久没收到 vsync。
+     * 超过 2 秒就记一次（2/4/6 秒各一次），写出是哪种延迟、所有线程的堆栈、系统负载和最近的生命周期事件。
+     * 之前只看主线程堆栈，两次卡死的堆栈都是空闲(nativePollOnce)，看不出原因，所以加了帧延迟和全线程堆栈。
      */
     private fun startHangWatchdog() {
         val main = Handler(Looper.getMainLooper())
         val beat = AtomicLong(SystemClock.uptimeMillis())
+        val frameBeat = AtomicLong(SystemClock.uptimeMillis())
         val pending = AtomicBoolean(false)
+        val framePending = AtomicBoolean(false)
         Thread({
             var inHang = false
             var dumped = 0
             var hangFrom = 0L
             while (true) {
+                val now0 = SystemClock.uptimeMillis()
                 if (!pending.getAndSet(true)) {
                     main.post { beat.set(SystemClock.uptimeMillis()); pending.set(false) }
                 }
+                val fg = resumedCount > 0
+                if (!fg) frameBeat.set(now0)   // 不在前台时不算帧延迟
+                else if (!framePending.getAndSet(true)) {
+                    main.post {
+                        android.view.Choreographer.getInstance().postFrameCallback {
+                            frameBeat.set(SystemClock.uptimeMillis()); framePending.set(false)
+                        }
+                    }
+                }
                 try { Thread.sleep(500) } catch (_: InterruptedException) { return@Thread }
-                val lag = SystemClock.uptimeMillis() - beat.get()
+                val now = SystemClock.uptimeMillis()
+                val msgLag = now - beat.get()
+                val frameLag = now - frameBeat.get()
+                val lag = maxOf(msgLag, frameLag)
                 if (lag > 2000) {
-                    if (!inHang) { inHang = true; dumped = 0; hangFrom = beat.get() }
+                    if (!inHang) { inHang = true; dumped = 0; hangFrom = minOf(beat.get(), frameBeat.get()) }
                     if (dumped < 3 && lag > 2000L * (dumped + 1)) {
                         dumped++
                         runCatching {
-                            val st = Looper.getMainLooper().thread.stackTrace.take(45).joinToString("\n") { "    at $it" }
-                            LogWriter.write("UI HANG", "main thread blocked ${lag}ms (dump #$dumped)\n$st")
+                            val kind = when {
+                                msgLag > 2000 && frameLag > 2000 -> "消息和帧都卡"
+                                msgLag > 2000 -> "仅消息队列卡(帧正常)"
+                                else -> "仅帧卡(消息正常，疑似 vsync/渲染)"
+                            }
+                            LogWriter.write("UI HANG", "$kind msgLag=${msgLag}ms frameLag=${frameLag}ms (dump #$dumped)\n${sysInfo()}\n${dumpThreads()}")
                         }
                     }
                 } else if (inHang) {
                     inHang = false
-                    LogWriter.write("UI HANG", "main thread recovered after about ${SystemClock.uptimeMillis() - hangFrom}ms")
+                    LogWriter.write("UI HANG", "recovered after about ${SystemClock.uptimeMillis() - hangFrom}ms ${sysInfo()}")
                 }
             }
         }, "vc-hang-watchdog").apply { isDaemon = true; start() }
