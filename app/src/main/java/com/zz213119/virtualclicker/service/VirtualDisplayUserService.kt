@@ -337,6 +337,91 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         return ok
     }
 
+    /**
+     * 不经过剪贴板输入文字：本进程(Shizuku=shell / Root)临时建立一个 UiAutomation 连接（和 uiautomator 同一套接口，
+     * 不会在系统里注册无障碍服务，用完立刻断开），在指定虚拟屏上找到获得输入焦点的输入框，用 ACTION_SET_TEXT 写入。
+     * 在光标处插入（光标位置读不到就追加到末尾）。任何一步失败都返回 false，由调用方退回剪贴板粘贴。
+     */
+    override fun setTextByUiAutomation(displayId: Int, text: String): Boolean {
+        if (text.isEmpty()) return false
+        var ua: android.app.UiAutomation? = null
+        var ht: HandlerThread? = null
+        var detail = ""
+        var ok = false
+        try {
+            ht = HandlerThread("vc-uia").also { it.start() }
+            val conn = Class.forName("android.app.UiAutomationConnection").getDeclaredConstructor().newInstance()
+            val iface = Class.forName("android.app.IUiAutomationConnection")
+            val ctor = android.app.UiAutomation::class.java.getDeclaredConstructor(android.os.Looper::class.java, iface)
+            ctor.isAccessible = true
+            ua = ctor.newInstance(ht.looper, conn) as android.app.UiAutomation
+            // FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES = 1：不要因为这次连接把用户正在用的其它无障碍服务关掉
+            val connectFlags = runCatching {
+                val m = android.app.UiAutomation::class.java.getDeclaredMethod("connect", Int::class.javaPrimitiveType)
+                m.isAccessible = true; m.invoke(ua, 1)
+            }
+            if (connectFlags.isFailure) {
+                val m = android.app.UiAutomation::class.java.getDeclaredMethod("connect")
+                m.isAccessible = true; m.invoke(ua)
+            }
+            val info = ua.serviceInfo
+            info.flags = info.flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                android.accessibilityservice.AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+            ua.serviceInfo = info
+            Thread.sleep(250)
+
+            val wins = ua.windowsOnAllDisplays?.get(displayId).orEmpty()
+            detail = "windows=${wins.size}"
+            var target: android.view.accessibility.AccessibilityNodeInfo? = null
+            fun dfs(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int): android.view.accessibility.AccessibilityNodeInfo? {
+                if (n == null || depth > 40) return null
+                if (n.isEditable && n.isFocused) return n
+                for (i in 0 until n.childCount) dfs(n.getChild(i), depth + 1)?.let { return it }
+                return null
+            }
+            for (w in wins) {
+                val root = w.root ?: continue
+                target = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+                    ?: dfs(root, 0)
+                if (target != null) break
+            }
+            if (target == null) {
+                detail += " noFocusedEditable"
+            } else {
+                val cur = if (target.isShowingHintText) "" else (target.text?.toString() ?: "")
+                var st = target.textSelectionStart
+                var en = target.textSelectionEnd
+                if (st < 0 || en < 0 || st > cur.length || en > cur.length) { st = cur.length; en = cur.length }
+                if (st > en) { val t = st; st = en; en = t }
+                val newText = cur.substring(0, st) + text + cur.substring(en)
+                val args = android.os.Bundle().apply {
+                    putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, newText)
+                }
+                ok = target.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                detail += " class=${target.className} oldLen=${cur.length} newLen=${newText.length}"
+                if (ok) {
+                    val sel = android.os.Bundle().apply {
+                        val pos = st + text.length
+                        putInt(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, pos)
+                        putInt(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, pos)
+                    }
+                    runCatching { target.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_SELECTION, sel) }
+                }
+            }
+        } catch (t: Throwable) {
+            val c = (t as? java.lang.reflect.InvocationTargetException)?.targetException ?: t
+            detail += " error=${c.javaClass.simpleName}: ${c.message}".take(200)
+        } finally {
+            runCatching {
+                val m = android.app.UiAutomation::class.java.getDeclaredMethod("disconnect")
+                m.isAccessible = true; m.invoke(ua)
+            }
+            ht?.quitSafely()
+        }
+        appendLog("UI TEXT", "displayId=$displayId chars=${text.length} ok=$ok $detail")
+        return ok
+    }
+
     override fun pressKey(displayId: Int, keyCode: Int): Boolean {
         val ok = runInput("input", "-d", displayId.toString(), "keyevent", keyCode.toString())
         appendLog("PRESS KEY", "displayId=$displayId key=$keyCode ok=$ok")

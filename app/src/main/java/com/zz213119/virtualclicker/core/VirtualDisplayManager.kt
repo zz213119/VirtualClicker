@@ -39,7 +39,7 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(26)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(27)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
@@ -107,6 +107,9 @@ object VirtualDisplayManager {
     fun heartbeat() { runCatching { service?.heartbeat() } }
 
     fun setIdleCloseMinutes(minutes: Int) { runCatching { service?.setIdleCloseMinutes(minutes) } }
+
+    fun setTextByUiAutomation(displayId: Int, text: String): Boolean =
+        runCatching { service?.setTextByUiAutomation(displayId, text) ?: false }.getOrDefault(false)
 
     fun inputText(displayId: Int, text: String): Boolean =
         runCatching { service?.inputText(displayId, text) ?: false }.getOrDefault(false)

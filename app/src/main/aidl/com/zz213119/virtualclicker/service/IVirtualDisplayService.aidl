@@ -94,6 +94,8 @@ interface IVirtualDisplayService {
 
     // 输入文字 / 按键（作用于指定虚拟屏里当前获得焦点的输入框）
     boolean inputText(int displayId, String text);          // 仅 ASCII 可打印字符（走 input text）
+    // 不经过剪贴板，用 UiAutomation(无障碍接口，由 Shizuku/Root 进程临时连接，不注册无障碍服务) 把文字写进虚拟屏上获得焦点的输入框；失败返回 false，调用方再退回剪贴板粘贴
+    boolean setTextByUiAutomation(int displayId, String text);
     boolean pressKey(int displayId, int keyCode);           // 单个按键，如 66=回车 4=返回 67=删除
     boolean pressCombo(int displayId, in int[] keyCodes);   // 组合键，如 Ctrl+V = [113, 50]
 

@@ -854,7 +854,8 @@ class AiSession(context: Context) {
                     Thread.sleep(80)
                 }
                 val ascii = text.all { it.code in 32..126 }
-                val done = if (ascii) VirtualDisplayManager.inputText(displayId, text) else pasteViaClipboard(displayId, text)
+                val done = if (ascii) VirtualDisplayManager.inputText(displayId, text)
+                           else (VirtualDisplayManager.setTextByUiAutomation(displayId, text) || pasteViaClipboard(displayId, text))
                 unsaved[taskNo] = (unsaved[taskNo] ?: 0) + 1
                 emit("  · 输入文字：${text.take(30)}${if (text.length > 30) "…" else ""}\n")
                 if (done && a.optBoolean("press_enter", false)) {
