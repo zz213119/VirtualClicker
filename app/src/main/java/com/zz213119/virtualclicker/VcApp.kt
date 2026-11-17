@@ -144,19 +144,21 @@ class VcApp : Application() {
                         }
                     }
                 }
-                try { Thread.sleep(500) } catch (_: InterruptedException) { return@Thread }
+                // 前台时检测更细（250ms 一次，超过 600ms 就记），后台保持 500ms / 2 秒，避免耗电
+                try { Thread.sleep(if (fg) 250 else 500) } catch (_: InterruptedException) { return@Thread }
                 val now = SystemClock.uptimeMillis()
                 val msgLag = now - beat.get()
                 val frameLag = now - frameBeat.get()
                 val lag = maxOf(msgLag, frameLag)
-                if (lag > 2000) {
+                val thr = if (fg) 600L else 2000L
+                if (lag > thr) {
                     if (!inHang) { inHang = true; dumped = 0; hangFrom = minOf(beat.get(), frameBeat.get()) }
-                    if (dumped < 3 && lag > 2000L * (dumped + 1)) {
+                    if (dumped < 3 && lag > thr * (dumped + 1)) {
                         dumped++
                         runCatching {
                             val kind = when {
-                                msgLag > 2000 && frameLag > 2000 -> "消息和帧都卡"
-                                msgLag > 2000 -> "仅消息队列卡(帧正常)"
+                                msgLag > thr && frameLag > thr -> "消息和帧都卡"
+                                msgLag > thr -> "仅消息队列卡(帧正常)"
                                 else -> "仅帧卡(消息正常，疑似 vsync/渲染)"
                             }
                             // 最近约 lag 毫秒里主线程：真正占用的 CPU、在运行队列里等 CPU 的时间

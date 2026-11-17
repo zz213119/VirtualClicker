@@ -1140,11 +1140,15 @@ class MainActivity : AppCompatActivity() {
         stopAutoClicker()
         clearCoordinateMarkers()
 
+        val clickAt = android.os.SystemClock.uptimeMillis()
         lifecycleScope.launch {
             virtualDisplayStatus.text = "正在彻底释放虚拟屏 #$displayId…"
-            withContext(Dispatchers.IO) {
+            val ioMs = withContext(Dispatchers.IO) {
+                val t0 = android.os.SystemClock.uptimeMillis()
                 VirtualDisplayManager.release(displayId)
+                android.os.SystemClock.uptimeMillis() - t0
             }
+            com.zz213119.virtualclicker.service.LogWriter.write("UI CLOSE", "displayId=$displayId release(IO)=${ioMs}ms total=${android.os.SystemClock.uptimeMillis() - clickAt}ms")
             virtualDisplayStatus.text = "已释放虚拟屏 #$displayId，系统显示资源正在完成清理"
             inputTestStatus.text = "虚拟屏已释放"
         }
