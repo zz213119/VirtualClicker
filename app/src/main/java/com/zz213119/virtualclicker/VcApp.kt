@@ -100,8 +100,7 @@ class VcApp : Application() {
     /** 在监视线程里计时一次到系统进程的 binder 调用：它也很慢说明是系统进程(system_server)本身卡了，不是本应用。 */
     private fun binderProbeMs(): Long = runCatching {
         val t0 = SystemClock.uptimeMillis()
-        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        am.getMyMemoryState(ActivityManager.RunningAppProcessInfo())
+        ActivityManager.getMyMemoryState(ActivityManager.RunningAppProcessInfo())   // 静态方法，会走一次 binder
         SystemClock.uptimeMillis() - t0
     }.getOrDefault(-1L)
 
