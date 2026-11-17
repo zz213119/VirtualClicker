@@ -772,7 +772,7 @@ class AiSession(context: Context) {
     /**
      * 含中文等非 ASCII 文字：临时写进剪贴板，给输入框发 Ctrl+V，粘贴完约 1.5 秒后自动清掉，不在用户剪贴板里留下痕迹：
      * - 写入的剪贴内容标记为“敏感”(系统和部分输入法据此不显示、不进历史)；
-     * - 写入前如果能读到用户原来的剪贴板就记下来，粘贴后原样还回去；读不到(应用在后台时系统不让读)就直接清空；
+     * - 粘贴后直接清空系统剪贴板（不还原旧内容，还原会让输入法历史把旧内容顶到最前面）；
      * - 只有剪贴板里还是我们写的那条才还原/清空，期间用户自己复制了别的东西就不动它。
      * 注意：个别手机的输入法有自己的“剪贴板历史”，那个不归系统管，可能仍会记一条。
      */
@@ -780,10 +780,6 @@ class AiSession(context: Context) {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val gen = ++clipGen
         val ok = runCatching {
-            // 连续输入多段文字时，第二段不能把“我们自己上一段”当成用户原来的剪贴板
-            if (cm.primaryClipDescription?.label != "vc_ai") {
-                clipPrev = runCatching { cm.primaryClip }.getOrNull()
-            }
             val clip = android.content.ClipData.newPlainText("vc_ai", text)
             runCatching {
                 clip.description.extras = android.os.PersistableBundle().apply {
@@ -803,12 +799,11 @@ class AiSession(context: Context) {
             Thread.sleep(1500)
             if (gen != clipGen) return@Thread          // 后面又有新的粘贴，由它负责收尾
             runCatching {
+                // 不再“还原”用户原来的剪贴板：还原会让输入法的剪贴板历史把旧内容当成新复制的顶到最前面。只清空。
                 if (cm.primaryClipDescription?.label == "vc_ai") {
-                    val prev = clipPrev
-                    if (prev != null) cm.setPrimaryClip(prev) else cm.clearPrimaryClip()
-                    LogWriter.write("AI", "clipboard cleaned restored=${prev != null}")
+                    cm.clearPrimaryClip()
+                    LogWriter.write("AI", "clipboard cleared")
                 }
-                clipPrev = null
             }
         }.start()
         return done
