@@ -1123,6 +1123,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * 释放后 12 秒从系统日志里捞出所有和本应用有关的“启动/移到前台/返回键”记录，看是谁把 MainActivity 又拉回来的。
      */
     private fun scheduleTaskDiag(displayId: Int) {
+        val releasedAt = System.currentTimeMillis()
         Thread {
             runCatching {
                 Thread.sleep(1000)
@@ -1133,12 +1134,19 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 }.take(20).joinToString("\n") { it.trim().take(220) }
                 appendLog("POST-RELEASE TASKS", "displayId=$displayId +1000ms\n$picked")
 
-                Thread.sleep(11000)
-                val lc = shellText("logcat", "-d", "-v", "time", "-t", "3000", "-b", "main,system,events")
-                val keys = listOf("virtualclicker", "KEYCODE_BACK", "moveTaskToBack", "moveTaskToFront", "bringToFront", "am_resume_activity", "wm_task_moved")
-                val lines = lc.lineSequence().filter { l -> keys.any { l.contains(it) } && !l.contains("VcLog") }
-                    .toList().takeLast(60).joinToString("\n") { it.trim().take(240) }
-                appendLog("POST-RELEASE LOGCAT", "displayId=$displayId +12s\n$lines")
+                Thread.sleep(19000)
+                // 从释放那一刻起的所有窗口管理事件（谁被暂停/恢复/移到前台，焦点怎么变），以及最近任务动画相关的系统日志
+                val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(releasedAt))
+                val ev = shellText("logcat", "-d", "-v", "threadtime", "-b", "events", "-T", since)
+                    .lineSequence().filter { it.contains(" I wm_") || it.contains(" I am_") || it.contains("input_focus") }
+                    .toList().take(160).joinToString("\n") { it.trim().take(200) }
+                appendLog("POST-RELEASE EVENTS", "displayId=$displayId since=$since\n$ev")
+                val sys = shellText("logcat", "-d", "-v", "threadtime", "-b", "system", "-T", since)
+                    .lineSequence().filter {
+                        it.contains("Recents", true) || it.contains("RecentsAnimation") || it.contains("cancelAnimation") ||
+                            it.contains("moveTaskToFront") || it.contains("START u0") || it.contains("resumeFocusedTasksTopActivities")
+                    }.toList().take(60).joinToString("\n") { it.trim().take(220) }
+                appendLog("POST-RELEASE SYSTEM", "displayId=$displayId\n$sys")
             }
         }.start()
     }
