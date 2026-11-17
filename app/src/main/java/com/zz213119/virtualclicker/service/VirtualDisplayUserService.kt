@@ -1118,24 +1118,27 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     /**
-     * 诊断：关闭虚拟屏后按返回键要按好几下才回得了桌面（每按一次 MainActivity 先进后台又马上被拉回前台）。
-     * 怀疑系统里还留着任务，所以释放后 1/4/7 秒各记一次任务栈，看看主屏上到底留了什么。
+     * 诊断：关闭虚拟屏后按返回键要按好几下才回得了桌面（每按一次 MainActivity 先进后台又被系统拉回前台）。
+     * 上一版的任务栈显示主屏上没有残留任务，所以这版改成：释放后 1 秒记一次任务栈；
+     * 释放后 12 秒从系统日志里捞出所有和本应用有关的“启动/移到前台/返回键”记录，看是谁把 MainActivity 又拉回来的。
      */
     private fun scheduleTaskDiag(displayId: Int) {
         Thread {
             runCatching {
-                var last = 0L
-                for (delayMs in longArrayOf(1000, 3000, 3000)) {
-                    Thread.sleep(delayMs)
-                    last += delayMs
-                    val text = shellText("dumpsys", "activity", "activities")
-                    val picked = text.lineSequence().filter {
-                        it.contains("Task{") || it.contains("topResumedActivity") || it.contains("ResumedActivity:") ||
-                            it.contains("mFocusedApp") || it.contains("Display #") || it.contains("mFocusedRootTask") ||
-                            it.contains("mLastFocusedRootTask")
-                    }.take(45).joinToString("\n") { it.trim().take(220) }
-                    appendLog("POST-RELEASE TASKS", "displayId=$displayId +${last}ms\n$picked")
-                }
+                Thread.sleep(1000)
+                val text = shellText("dumpsys", "activity", "activities")
+                val picked = text.lineSequence().filter {
+                    it.contains("topResumedActivity") || it.contains("ResumedActivity:") || it.contains("mFocusedApp") ||
+                        it.contains("Display #") || (it.contains("Task{") && it.contains("displayId=$displayId"))
+                }.take(20).joinToString("\n") { it.trim().take(220) }
+                appendLog("POST-RELEASE TASKS", "displayId=$displayId +1000ms\n$picked")
+
+                Thread.sleep(11000)
+                val lc = shellText("logcat", "-d", "-v", "time", "-t", "3000", "-b", "main,system,events")
+                val keys = listOf("virtualclicker", "KEYCODE_BACK", "moveTaskToBack", "moveTaskToFront", "bringToFront", "am_resume_activity", "wm_task_moved")
+                val lines = lc.lineSequence().filter { l -> keys.any { l.contains(it) } && !l.contains("VcLog") }
+                    .toList().takeLast(60).joinToString("\n") { it.trim().take(240) }
+                appendLog("POST-RELEASE LOGCAT", "displayId=$displayId +12s\n$lines")
             }
         }.start()
     }
