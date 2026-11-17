@@ -91,6 +91,20 @@ class VcApp : Application() {
         return sb.toString()
     }
 
+    /** 主线程的 schedstat：[占用 CPU 的纳秒, 在运行队列里等 CPU 的纳秒]。用来区分“被 CPU 饿住”和“卡在系统调用上”。 */
+    private fun mainSched(): LongArray? = runCatching {
+        val parts = java.io.File("/proc/self/task/${android.os.Process.myPid()}/schedstat").readText().trim().split(" ")
+        longArrayOf(parts[0].toLong(), parts[1].toLong())
+    }.getOrNull()
+
+    /** 在监视线程里计时一次到系统进程的 binder 调用：它也很慢说明是系统进程(system_server)本身卡了，不是本应用。 */
+    private fun binderProbeMs(): Long = runCatching {
+        val t0 = SystemClock.uptimeMillis()
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        am.getMyMemoryState(ActivityManager.RunningAppProcessInfo())
+        SystemClock.uptimeMillis() - t0
+    }.getOrDefault(-1L)
+
     private fun sysInfo(): String {
         val rt = Runtime.getRuntime()
         val load = runCatching { java.io.File("/proc/loadavg").readText().trim() }.getOrDefault("?")
@@ -115,8 +129,10 @@ class VcApp : Application() {
             var inHang = false
             var dumped = 0
             var hangFrom = 0L
+            val samples = ArrayDeque<Triple<Long, Long, Long>>()   // 时间, 主线程CPU ns, 主线程等CPU ns
             while (true) {
                 val now0 = SystemClock.uptimeMillis()
+                mainSched()?.let { ss -> samples.addLast(Triple(now0, ss[0], ss[1])); while (samples.size > 12) samples.removeFirst() }
                 if (!pending.getAndSet(true)) {
                     main.post { beat.set(SystemClock.uptimeMillis()); pending.set(false) }
                 }
@@ -144,7 +160,13 @@ class VcApp : Application() {
                                 msgLag > 2000 -> "仅消息队列卡(帧正常)"
                                 else -> "仅帧卡(消息正常，疑似 vsync/渲染)"
                             }
-                            LogWriter.write("UI HANG", "$kind msgLag=${msgLag}ms frameLag=${frameLag}ms (dump #$dumped)\n${sysInfo()}\n${dumpThreads()}")
+                            // 最近约 lag 毫秒里主线程：真正占用的 CPU、在运行队列里等 CPU 的时间
+                            val old = samples.firstOrNull { now - it.first <= lag + 600 } ?: samples.firstOrNull()
+                            val cur = mainSched()
+                            val sched = if (old != null && cur != null)
+                                "mainCpu=${(cur[0] - old.second) / 1_000_000}ms mainRunqWait=${(cur[1] - old.third) / 1_000_000}ms over ${now - old.first}ms" else "sched=?"
+                            val probe = binderProbeMs()
+                            LogWriter.write("UI HANG", "$kind msgLag=${msgLag}ms frameLag=${frameLag}ms (dump #$dumped)\n$sched binderProbe=${probe}ms\n${sysInfo()}\n${dumpThreads()}")
                         }
                     }
                 } else if (inHang) {
