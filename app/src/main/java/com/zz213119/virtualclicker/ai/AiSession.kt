@@ -766,11 +766,31 @@ class AiSession(context: Context) {
         return lines.take(if (fast()) 80 else 150).joinToString("\n") { "%s (%.2f,%.2f)".format(it.text, it.cx, it.cy) }
     }
 
-    /** 含中文等非 ASCII 文字：写进剪贴板，再给输入框发 Ctrl+V（不行就发粘贴键）。会覆盖用户当前的剪贴板内容。 */
+    @Volatile private var clipGen = 0
+    @Volatile private var clipPrev: android.content.ClipData? = null
+
+    /**
+     * 含中文等非 ASCII 文字：临时写进剪贴板，给输入框发 Ctrl+V，粘贴完约 1.5 秒后自动清掉，不在用户剪贴板里留下痕迹：
+     * - 写入的剪贴内容标记为“敏感”(系统和部分输入法据此不显示、不进历史)；
+     * - 写入前如果能读到用户原来的剪贴板就记下来，粘贴后原样还回去；读不到(应用在后台时系统不让读)就直接清空；
+     * - 只有剪贴板里还是我们写的那条才还原/清空，期间用户自己复制了别的东西就不动它。
+     * 注意：个别手机的输入法有自己的“剪贴板历史”，那个不归系统管，可能仍会记一条。
+     */
     private fun pasteViaClipboard(displayId: Int, text: String): Boolean {
+        val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val gen = ++clipGen
         val ok = runCatching {
-            (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newPlainText("vc_ai", text))
+            // 连续输入多段文字时，第二段不能把“我们自己上一段”当成用户原来的剪贴板
+            if (cm.primaryClipDescription?.label != "vc_ai") {
+                clipPrev = runCatching { cm.primaryClip }.getOrNull()
+            }
+            val clip = android.content.ClipData.newPlainText("vc_ai", text)
+            runCatching {
+                clip.description.extras = android.os.PersistableBundle().apply {
+                    putBoolean("android.content.extra.IS_SENSITIVE", true)
+                }
+            }
+            cm.setPrimaryClip(clip)
         }.isSuccess
         if (!ok) {
             LogWriter.write("AI", "set clipboard failed")
@@ -779,6 +799,18 @@ class AiSession(context: Context) {
         Thread.sleep(150)
         val done = VirtualDisplayManager.pressCombo(displayId, intArrayOf(113, 50)) || VirtualDisplayManager.pressKey(displayId, 279)
         LogWriter.write("AI", "paste via clipboard chars=${text.length} ok=$done")
+        Thread {
+            Thread.sleep(1500)
+            if (gen != clipGen) return@Thread          // 后面又有新的粘贴，由它负责收尾
+            runCatching {
+                if (cm.primaryClipDescription?.label == "vc_ai") {
+                    val prev = clipPrev
+                    if (prev != null) cm.setPrimaryClip(prev) else cm.clearPrimaryClip()
+                    LogWriter.write("AI", "clipboard cleaned restored=${prev != null}")
+                }
+                clipPrev = null
+            }
+        }.start()
         return done
     }
 
