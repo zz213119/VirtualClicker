@@ -1052,6 +1052,23 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
      * internal ImageReader sink. Removing the map entry first also prevents
      * new input calls from racing with a release.
      */
+    /** 轮询系统任务栈，直到指定显示器上没有任何任务，或超时。结果写日志。 */
+    private fun waitDisplayTasksGone(displayId: Int, timeoutMs: Long) {
+        val t0 = System.currentTimeMillis()
+        var gone = false
+        var polls = 0
+        runCatching {
+            while (System.currentTimeMillis() - t0 < timeoutMs) {
+                polls++
+                val text = shellText("dumpsys", "activity", "activities")
+                val has = text.lineSequence().any { it.contains("Task{") && it.contains("displayId=$displayId ") }
+                if (!has) { gone = true; break }
+                Thread.sleep(400)
+            }
+        }
+        appendLog("RELEASE WAIT TASK", "displayId=$displayId gone=$gone polls=$polls waited=${System.currentTimeMillis() - t0}ms")
+    }
+
     private fun cleanupDisplay(displayId: Int, reason: String) {
         attachedSurfaces.remove(displayId)
         releaseDisplayWakeLock(displayId)
@@ -1065,6 +1082,10 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 pr.waitFor()
                 appendLog("RELEASE FORCE-STOP", "displayId=$displayId pkg=$pkg")
             }
+            // 实验：强杀后这块屏上的任务要过 4 秒左右才会被系统移除，而且正好落在用户随后按“最近任务”键的转场里，
+            // 日志里能看到任务被移除后不到 1 秒，系统就把主页又拉回前台（最近任务动画被打断）。
+            // 所以先等任务真的消失（最多 6 秒）再释放虚拟屏，让这个移除发生在用户操作之前。
+            waitDisplayTasksGone(displayId, 6000)
         }
         val session = sessions.remove(displayId)
         val vd = displays.remove(displayId)
