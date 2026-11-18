@@ -191,7 +191,7 @@ class FullscreenPreviewActivity : Activity() {
 
             val transformed = MotionEvent.obtain(event)
             transformed.transform(Matrix().apply { setScale(scaleX, scaleY) })
-            VirtualDisplayManager.injectMotionEvent(transformed, displayId)
+            VirtualDisplayManager.injectMotionEventAsync(transformed, displayId)
             transformed.recycle()
             true
         }

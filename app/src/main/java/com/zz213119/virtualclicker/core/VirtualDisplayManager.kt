@@ -39,7 +39,7 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(27)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(28)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
@@ -379,4 +379,28 @@ object VirtualDisplayManager {
             service?.injectMotionEvent(event, displayId) ?: false
         }.onFailure { Log.e(TAG, "injectMotionEvent failed", it) }
             .getOrDefault(false)
+
+    // 界面线程的触摸事件不能在主线程上同步等后台服务（每个 MOVE 都是一次跨进程调用，服务一忙界面就卡）。
+    // 这里用单线程队列按顺序注入：事件先复制一份，队列积压太多时丢弃多余的 MOVE（DOWN/UP/CANCEL 一律保留）。
+    private val touchExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "vc-touch-inject").apply { isDaemon = true }
+    }
+    private val touchPending = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** 拷贝 [event] 后异步注入，调用方可以立刻回收自己的 event。失败(且不是 MOVE)时回调 [onFail]（在注入线程里）。 */
+    fun injectMotionEventAsync(event: android.view.MotionEvent, displayId: Int, onFail: (() -> Unit)? = null) {
+        val isMove = event.actionMasked == android.view.MotionEvent.ACTION_MOVE
+        if (isMove && touchPending.get() > 6) return
+        val copy = android.view.MotionEvent.obtain(event)
+        touchPending.incrementAndGet()
+        touchExecutor.execute {
+            try {
+                val ok = injectMotionEvent(copy, displayId)
+                if (!ok && !isMove) onFail?.invoke()
+            } finally {
+                touchPending.decrementAndGet()
+                copy.recycle()
+            }
+        }
+    }
 }

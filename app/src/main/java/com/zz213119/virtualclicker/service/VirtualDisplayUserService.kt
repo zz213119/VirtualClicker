@@ -316,10 +316,29 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     // ---- 输入文字 / 按键 ----
-    private fun runInput(vararg cmd: String): Boolean = runCatching {
+    /**
+     * 运行子进程并读取输出，带超时：超时就强制结束并记日志。
+     * 之前是 readText()+waitFor() 没有超时，子进程一旦卡住(`input`/`dumpsys` 在手机很忙时会发生)，
+     * 这个 binder 线程就永远占着；占满后服务不再响应，而界面线程还在同步等它，应用就整个卡死。
+     */
+    private fun execTimeout(timeoutMs: Long, vararg cmd: String): Pair<Int, String> {
         val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
-        val out = pr.inputStream.bufferedReader().readText()
-        val code = pr.waitFor()
+        val sb = StringBuilder()
+        val reader = Thread {
+            runCatching { pr.inputStream.bufferedReader().use { r -> val buf = CharArray(8192); while (true) { val n = r.read(buf); if (n < 0) break; synchronized(sb) { sb.append(buf, 0, n) } } } }
+        }.apply { isDaemon = true; start() }
+        val finished = pr.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+        if (!finished) {
+            pr.destroyForcibly()
+            appendLog("PROC TIMEOUT", "cmd=${cmd.joinToString(" ").take(100)} after ${timeoutMs}ms")
+        }
+        reader.join(1000)
+        val out = synchronized(sb) { sb.toString() }
+        return (if (finished) pr.exitValue() else -999) to out
+    }
+
+    private fun runInput(vararg cmd: String): Boolean = runCatching {
+        val (code, out) = execTimeout(8000, *cmd)
         val bad = code != 0 || out.contains("Exception", ignoreCase = true) || out.contains("Unknown command", ignoreCase = true) || out.contains("Error:", ignoreCase = true)
         if (bad) appendLog("INPUT FAILED", "cmd=${cmd.joinToString(" ").take(120)} exit=$code out=${out.trim().take(200)}")
         !bad
@@ -749,10 +768,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
     }
 
     private fun shellText(vararg cmd: String): String = runCatching {
-        val pr = ProcessBuilder(*cmd).redirectErrorStream(true).start()
-        val t = pr.inputStream.bufferedReader().readText()
-        pr.waitFor()
-        t
+        execTimeout(15000, *cmd).second
     }.getOrDefault("")
 
     /** 这块虚拟屏所在的电源显示组 id（从 dumpsys display 里解析），失败返回 1。 */

@@ -844,12 +844,10 @@ class MainActivity : AppCompatActivity() {
         transformed.transform(android.graphics.Matrix().apply {
             setScale(scaleX, scaleY)
         })
-        val ok = VirtualDisplayManager.injectMotionEvent(transformed, displayId)
-        transformed.recycle()
-
-        if (!ok && event.actionMasked != MotionEvent.ACTION_MOVE) {
-            inputTestStatus.text = "手动输入注入失败，请查看日志"
+        VirtualDisplayManager.injectMotionEventAsync(transformed, displayId) {
+            runOnUiThread { inputTestStatus.text = "手动输入注入失败，请查看日志" }
         }
+        transformed.recycle()
     }
 
     private fun startAutoClicker() {
@@ -1478,11 +1476,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** 异环卡片：普通 / 实验模式的标题说明，以及"开始 ↔ 关闭"按钮状态。 */
+    private var lastYihuanCardKey = -1
+
     private fun refreshYihuanCard() {
         val svc = com.zz213119.virtualclicker.service.ScriptRunnerService
         val experimental = Prefs.oneClickMode(this)
         val active = svc.activeTaskId
         val running = active == svc.TASK_YIHUAN_SHOP || active == svc.TASK_ONE_CLICK
+        // 每秒都会进来：状态没变就什么都不碰，避免每秒重设文字/样式触发整页重新布局（页面里还有个 SurfaceView）
+        val key = (if (experimental) 2 else 0) + (if (running) 1 else 0)
+        if (key == lastYihuanCardKey) return
+        lastYihuanCardKey = key
         findViewById<TextView>(R.id.yihuanTitle).text =
             if (experimental) "异环 · 店长特供 1-1（实验）" else "异环 · 店长特供 1-1"
         findViewById<TextView>(R.id.yihuanHelp).text =

@@ -258,12 +258,10 @@ class FullscreenPreviewDialog(
             // This makes dragging responsive and lets games receive real motion.
             val transformed = MotionEvent.obtain(event)
             transformed.transform(Matrix().apply { setScale(scaleX, scaleY) })
-            val ok = VirtualDisplayManager.injectMotionEvent(transformed, displayId)
-            transformed.recycle()
-
-            if (!ok && event.actionMasked != MotionEvent.ACTION_MOVE) {
-                coordinateHint.text = "输入注入失败，请查看日志"
+            VirtualDisplayManager.injectMotionEventAsync(transformed, displayId) {
+                coordinateHint.post { coordinateHint.text = "输入注入失败，请查看日志" }
             }
+            transformed.recycle()
             true
         }
     }
