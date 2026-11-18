@@ -55,4 +55,15 @@
         <item name="android:textColor">@color/vc_text</item>
         <item name="android:textColorHint">@color/vc_text2</item>
     </style>
+    <style name="VC.Label" parent="android:Widget.TextView">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/vc_text2</item>
+    </style>
+    <style name="VC.NavItem" parent="android:Widget.TextView">
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/vc_text2</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+    </style>
 </resources>

@@ -159,6 +159,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(R.layout.activity_main)
+        setupBottomNav()
 
         shizukuStatus = findViewById(R.id.shizukuStatus)
         backendStatus = findViewById(R.id.backendStatus)
@@ -450,7 +451,7 @@ class MainActivity : AppCompatActivity() {
                 .putExtra(svc.EXTRA_TASK_ID, if (experimental) svc.TASK_ONE_CLICK else svc.TASK_YIHUAN_SHOP)
             androidx.core.content.ContextCompat.startForegroundService(this, taskIntent)
             virtualDisplayStatus.text =
-                if (experimental) "一键开刷（实验）已启动：进度见通知栏，虚拟屏创建后会显示在上面的预览里"
+                if (experimental) "一键开刷（实验）已启动：进度见通知栏，虚拟屏创建后会显示在首页的预览里"
                 else "异环任务已启动：结果见日志与 files/shots 截图"
             refreshYihuanCard()
         }
@@ -1441,6 +1442,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private var currentTab = 0
+
+    /** 底部三个标签：首页 / 脚本 / 设置。所有控件仍在同一个 Activity 里，只切换显示哪一页。 */
+    private fun setupBottomNav() {
+        val root = findViewById<View>(R.id.mainRoot)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val b = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            v.setPadding(0, b.top, 0, b.bottom)
+            insets
+        }
+        val pages = listOf(R.id.pageHome, R.id.pageScripts, R.id.pageSettings)
+        val tabs = listOf(R.id.navHome, R.id.navScripts, R.id.navSettings)
+        fun select(i: Int) {
+            currentTab = i
+            pages.forEachIndexed { idx, id -> findViewById<View>(id).visibility = if (idx == i) View.VISIBLE else View.GONE }
+            tabs.forEachIndexed { idx, id ->
+                val tv = findViewById<TextView>(id)
+                tv.setTextColor(getColor(if (idx == i) R.color.vc_primary else R.color.vc_text2))
+                tv.setTypeface(null, if (idx == i) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            }
+        }
+        tabs.forEachIndexed { i, id -> findViewById<View>(id).setOnClickListener { select(i) } }
+        select(currentTab)
+    }
+
     override fun onResume() {
         super.onResume()
         findViewById<android.view.View>(R.id.debugCard).visibility =
@@ -1491,7 +1518,7 @@ class MainActivity : AppCompatActivity() {
             if (experimental) "异环 · 店长特供 1-1（实验）" else "异环 · 店长特供 1-1"
         findViewById<TextView>(R.id.yihuanHelp).text =
             if (experimental) "实验：全自动 —— 启动游戏 → 登录 → 进入游戏 → 都市大亨 → 店长特供 → 传送 → 走进 ORIGEN 咖啡店 → 自动刷 1-1；体力耗尽时发通知。点“关闭”可随时停止。关掉实验开关则回到半自动：需自己先把游戏停在店内。"
-            else "循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在上面启动虚拟屏。点“关闭”可随时停止。"
+            else "循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在首页启动虚拟屏。点“关闭”可随时停止。"
         val btn = findViewById<Button>(R.id.runYihuanShopTask)
         if (running) {
             btn.text = "关闭"
