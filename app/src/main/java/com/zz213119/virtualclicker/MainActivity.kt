@@ -386,16 +386,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.screenOffButton).setOnClickListener {
-            lifecycleScope.launch {
-                val ok = withContext(Dispatchers.IO) {
-                    VirtualDisplayManager.ensureBound() && VirtualDisplayManager.setScreenOffMode(true)
-                }
-                Toast.makeText(
-                    this@MainActivity,
-                    if (ok) "屏幕已关闭，系统保持唤醒；任务结束会自动点亮，也可按电源键" else "熄屏失败，请查看日志",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            startActivity(Intent(this, com.zz213119.virtualclicker.ui.AodActivity::class.java))
         }
 
         findViewById<Button>(R.id.resetBackend).setOnClickListener {
@@ -1511,8 +1502,88 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.homeStatusSub).setTextColor(fg)
     }
 
+
+    /** 脚本页下半部分：已保存的脚本列表（来自脚本编辑器或 AI 的“存脚本”）。 */
+    private fun refreshSavedScripts() {
+        val container = findViewById<android.widget.LinearLayout>(R.id.savedScriptsContainer)
+        container.removeAllViews()
+        val names = com.zz213119.virtualclicker.script.ScriptRepository.listNames(this)
+        if (names.isEmpty()) {
+            container.addView(TextView(this).apply {
+                text = "还没有保存的脚本。可以在首页的 AI 助手里让 AI“存脚本”，或用上面的脚本编辑器创建。"
+                setTextColor(getColor(R.color.vc_text2))
+                textSize = 13f
+                setPadding(dp(8), dp(12), dp(8), dp(12))
+            })
+            return
+        }
+        for (name in names) {
+            val script = com.zz213119.virtualclicker.script.ScriptRepository.load(this, name) ?: continue
+            val json = com.zz213119.virtualclicker.script.ScriptJson.encode(script)
+            val item = layoutInflater.inflate(R.layout.item_saved_script, container, false)
+            item.findViewById<TextView>(R.id.scriptName).text = script.name
+            item.findViewById<TextView>(R.id.scriptMeta).text =
+                "${script.actions.size} 个动作 · 重复 " + (if (script.repeatCount == 0) "无限" else "${script.repeatCount}") + " 次"
+            val bytes = json.toByteArray().size
+            item.findViewById<TextView>(R.id.scriptSize).text =
+                if (bytes < 1024) "$bytes B" else String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0)
+            item.findViewById<View>(R.id.scriptPlay).setOnClickListener { runSavedScript(script) }
+            item.findViewById<View>(R.id.scriptEdit).setOnClickListener {
+                com.zz213119.virtualclicker.script.ScriptRepository.rememberLast(this, script.name)
+                startActivity(
+                    Intent(this, com.zz213119.virtualclicker.ui.ScriptEditorActivity::class.java)
+                        .putExtra(com.zz213119.virtualclicker.ui.ScriptEditorActivity.EXTRA_DISPLAY_ID, currentDisplayId)
+                        .putExtra("extra_editor_display_width", displayWidth)
+                        .putExtra("extra_editor_display_height", displayHeight)
+                )
+            }
+            item.findViewById<View>(R.id.scriptShare).setOnClickListener {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, script.name)
+                    .putExtra(Intent.EXTRA_TEXT, json)
+                startActivity(Intent.createChooser(send, "分享脚本"))
+            }
+            item.findViewById<View>(R.id.scriptDelete).setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("删除脚本")
+                    .setMessage("确定删除“${script.name}”吗？删除后无法恢复。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("删除") { _, _ ->
+                        com.zz213119.virtualclicker.script.ScriptRepository.delete(this, script.name)
+                        refreshSavedScripts()
+                    }
+                    .show()
+            }
+            container.addView(item)
+        }
+    }
+
+    private fun runSavedScript(script: com.zz213119.virtualclicker.script.ScriptDefinition) {
+        if (currentDisplayId < 0) {
+            Toast.makeText(this, "请先在首页启动虚拟屏", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (script.actions.isEmpty()) {
+            Toast.makeText(this, "这个脚本没有动作", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(this, com.zz213119.virtualclicker.service.ScriptRunnerService::class.java)
+            .setAction(com.zz213119.virtualclicker.service.ScriptRunnerService.ACTION_RUN)
+            .putExtra(com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_DISPLAY_ID, currentDisplayId)
+            .putExtra(
+                com.zz213119.virtualclicker.service.ScriptRunnerService.EXTRA_SCRIPT_JSON,
+                com.zz213119.virtualclicker.script.ScriptJson.encode(script)
+            )
+        runCatching { androidx.core.content.ContextCompat.startForegroundService(this, intent) }
+            .onSuccess { Toast.makeText(this, "脚本已启动：${script.name}", Toast.LENGTH_SHORT).show() }
+            .onFailure { Toast.makeText(this, "脚本启动失败：${it.message}", Toast.LENGTH_LONG).show() }
+    }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
     override fun onResume() {
         super.onResume()
+        refreshSavedScripts()
         findViewById<android.view.View>(R.id.debugCard).visibility =
             if (Prefs.showDebugTools(this)) android.view.View.VISIBLE else android.view.View.GONE
         setupAiPanel()

@@ -404,7 +404,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="熄屏挂机（只关屏幕，系统不休眠）" />
+            android:text="息屏显示（黑屏显示时间，系统不休眠）" />
             </LinearLayout>
 
             <LinearLayout
@@ -440,6 +440,20 @@
             android:text="脚本编辑器（自动精灵模式）" />
             </LinearLayout>
 
+
+            <TextView
+                style="@style/VC.Label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="24dp"
+                android:text="已保存的脚本" />
+
+            <LinearLayout
+                android:id="@+id/savedScriptsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
         </LinearLayout>
     </ScrollView>
 

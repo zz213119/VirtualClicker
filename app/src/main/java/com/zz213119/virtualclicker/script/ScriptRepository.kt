@@ -91,6 +91,20 @@ object ScriptRepository {
             .apply()
     }
 
+    /** 删除一个已保存的脚本；如果它正好是“上次使用的”，一并清掉那个记录。 */
+    fun delete(context: Context, name: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val names = prefs.getStringSet(KEY_SCRIPT_NAMES, emptySet()).orEmpty().toMutableSet()
+        names -= name
+        val editor = prefs.edit()
+            .remove(SCRIPT_KEY_PREFIX + name)
+            .putStringSet(KEY_SCRIPT_NAMES, names)
+        if (prefs.getString(KEY_LAST_NAME, null) == name) {
+            editor.remove(KEY_LAST_NAME).remove(KEY_LAST_SCRIPT)
+        }
+        editor.apply()
+    }
+
     fun saveLast(context: Context, script: ScriptDefinition) {
         saveOrUpdate(context, script)
     }
