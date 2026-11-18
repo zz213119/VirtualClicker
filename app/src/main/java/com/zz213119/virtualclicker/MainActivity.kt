@@ -1152,9 +1152,11 @@ class MainActivity : AppCompatActivity() {
             val raw = runCatching {
                 contentResolver.openInputStream(uri)?.use { it.readBytes().let { b -> if (b.size > 1_000_000) null else String(b, Charsets.UTF_8) } }
             }.getOrNull()
-            importScriptFromText(raw)
+            val box = importInputRef
+            if (box != null && raw != null) box.setText(raw) else importScriptFromText(raw)
         }
     }
+    private var importInputRef: android.widget.EditText? = null
 
     private val appPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -1566,46 +1568,51 @@ class MainActivity : AppCompatActivity() {
                         refreshSavedScripts()
                     }
                     .show()
+                    .also { it.window?.setBackgroundDrawableResource(R.drawable.bg_dialog) }
             }
             container.addView(item)
         }
     }
 
 
-    /** “导入脚本”：从文件，或从剪贴板里的脚本内容（就是“分享”出来的那段 JSON）。 */
+    /** “导入脚本”：弹出一个输入框，让用户手动粘贴 / 输入脚本内容；也可以点“选择文件”把文件内容填进框里。 */
     private fun showImportScriptDialog() {
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("导入脚本")
-            .setItems(arrayOf("从文件导入（.json / .txt）", "从剪贴板导入")) { _, which ->
-                if (which == 0) {
-                    importScriptLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
-                } else {
-                    val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    val raw = runCatching { cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString() }.getOrNull()
-                    importScriptFromText(raw)
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
+        val view = layoutInflater.inflate(R.layout.dialog_import_script, null)
+        val input = view.findViewById<android.widget.EditText>(R.id.importInput)
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        importInputRef = input
+        dialog.setOnDismissListener { importInputRef = null }
+        view.findViewById<View>(R.id.importPickFile).setOnClickListener {
+            importScriptLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+        }
+        view.findViewById<View>(R.id.importCancel).setOnClickListener { dialog.dismiss() }
+        view.findViewById<View>(R.id.importConfirm).setOnClickListener {
+            if (importScriptFromText(input.text?.toString())) dialog.dismiss()
+            else input.error = "不是有效的脚本内容"
+        }
+        dialog.show()
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
 
-    private fun importScriptFromText(raw: String?) {
+    /** 返回 true 表示内容有效并已处理（导入，或弹出了同名处理框）；false 表示内容无效。 */
+    private fun importScriptFromText(raw: String?): Boolean {
         val script = raw?.trim()?.takeIf { it.isNotEmpty() }
             ?.let { com.zz213119.virtualclicker.script.ScriptJson.decode(it) }
         if (script == null) {
-            Toast.makeText(this, "不是有效的脚本内容", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         if (script.actions.isEmpty()) {
             Toast.makeText(this, "这个脚本里没有动作，已忽略", Toast.LENGTH_SHORT).show()
-            return
+            return true
         }
         val repo = com.zz213119.virtualclicker.script.ScriptRepository
         if (!repo.exists(this, script.name)) {
             repo.saveOrUpdate(this, script)
             refreshSavedScripts()
             Toast.makeText(this, "已导入：${script.name}", Toast.LENGTH_SHORT).show()
-            return
+            return true
         }
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("已有同名脚本")
@@ -1625,6 +1632,8 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "已覆盖：${script.name}", Toast.LENGTH_SHORT).show()
             }
             .show()
+            .also { it.window?.setBackgroundDrawableResource(R.drawable.bg_dialog) }
+        return true
     }
 
     private fun runSavedScript(script: com.zz213119.virtualclicker.script.ScriptDefinition) {
