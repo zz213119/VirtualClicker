@@ -425,13 +425,28 @@
             </LinearLayout>
 
 
-            <TextView
-                style="@style/VC.Label"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:layout_marginTop="24dp"
-                android:text="已保存的脚本" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/VC.Label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="已保存的脚本" />
+
+                <Button
+                    android:id="@+id/importScriptButton"
+                    style="@style/Widget.VC.Button.Chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="导入脚本" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/savedScriptsContainer"

@@ -273,7 +273,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:minHeight="44dp"
-            android:text="在主页显示调试工具（输入测试/连点器）"
+            android:text="显示调试工具（输入测试 / 连点器，显示在“设置”标签页底部，默认关闭）"
             android:textColor="@color/vc_text"
             android:textSize="14sp" />
 

@@ -352,6 +352,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        findViewById<Button>(R.id.importScriptButton).setOnClickListener { showImportScriptDialog() }
+
         findViewById<Button>(R.id.listApps).setOnClickListener {
             appPickerLauncher.launch(Intent(this, AppPickerActivity::class.java))
         }
@@ -1143,6 +1145,17 @@ class MainActivity : AppCompatActivity() {
             inputTestStatus.text = "虚拟屏已释放"
         }
     }
+    private val importScriptLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            val raw = runCatching {
+                contentResolver.openInputStream(uri)?.use { it.readBytes().let { b -> if (b.size > 1_000_000) null else String(b, Charsets.UTF_8) } }
+            }.getOrNull()
+            importScriptFromText(raw)
+        }
+    }
+
     private val appPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -1510,7 +1523,7 @@ class MainActivity : AppCompatActivity() {
         val names = com.zz213119.virtualclicker.script.ScriptRepository.listNames(this)
         if (names.isEmpty()) {
             container.addView(TextView(this).apply {
-                text = "还没有保存的脚本。可以在首页的 AI 助手里让 AI“存脚本”，或用上面的脚本编辑器创建。"
+                text = "还没有保存的脚本。可以点右上角“导入脚本”，或在首页的 AI 助手里让 AI“存脚本”，或用上面的脚本编辑器创建。"
                 setTextColor(getColor(R.color.vc_text2))
                 textSize = 13f
                 setPadding(dp(8), dp(12), dp(8), dp(12))
@@ -1556,6 +1569,62 @@ class MainActivity : AppCompatActivity() {
             }
             container.addView(item)
         }
+    }
+
+
+    /** “导入脚本”：从文件，或从剪贴板里的脚本内容（就是“分享”出来的那段 JSON）。 */
+    private fun showImportScriptDialog() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("导入脚本")
+            .setItems(arrayOf("从文件导入（.json / .txt）", "从剪贴板导入")) { _, which ->
+                if (which == 0) {
+                    importScriptLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+                } else {
+                    val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val raw = runCatching { cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString() }.getOrNull()
+                    importScriptFromText(raw)
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun importScriptFromText(raw: String?) {
+        val script = raw?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { com.zz213119.virtualclicker.script.ScriptJson.decode(it) }
+        if (script == null) {
+            Toast.makeText(this, "不是有效的脚本内容", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (script.actions.isEmpty()) {
+            Toast.makeText(this, "这个脚本里没有动作，已忽略", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val repo = com.zz213119.virtualclicker.script.ScriptRepository
+        if (!repo.exists(this, script.name)) {
+            repo.saveOrUpdate(this, script)
+            refreshSavedScripts()
+            Toast.makeText(this, "已导入：${script.name}", Toast.LENGTH_SHORT).show()
+            return
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("已有同名脚本")
+            .setMessage("“${script.name}”已经存在，要怎么处理？")
+            .setNegativeButton("取消", null)
+            .setNeutralButton("另存为副本") { _, _ ->
+                var n = 2
+                while (repo.exists(this, "${script.name} ($n)")) n++
+                val copy = script.copy(name = "${script.name} ($n)")
+                repo.saveOrUpdate(this, copy)
+                refreshSavedScripts()
+                Toast.makeText(this, "已导入：${copy.name}", Toast.LENGTH_SHORT).show()
+            }
+            .setPositiveButton("覆盖") { _, _ ->
+                repo.saveOrUpdate(this, script)
+                refreshSavedScripts()
+                Toast.makeText(this, "已覆盖：${script.name}", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun runSavedScript(script: com.zz213119.virtualclicker.script.ScriptDefinition) {

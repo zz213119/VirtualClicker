@@ -48,7 +48,7 @@ object Prefs {
     fun aiControl(c: Context) = sp(c).getBoolean("ai_control", false)
     /** 只保留最近 7 天的日志和截图（自动删除更早的）。默认关闭。 */
     fun keepLogs7Days(c: Context) = sp(c).getBoolean("keep_logs_7d", false)
-    fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", true)
+    fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", false)
 
     fun setBool(c: Context, key: String, value: Boolean) =
         sp(c).edit().putBoolean(key, value).apply()
