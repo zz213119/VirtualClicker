@@ -17,7 +17,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
-      - run: gradle :app:assembleDebug --stacktrace
+      - name: Build (surface compile errors as annotations)
+        shell: bash
+        run: |
+          set +e
+          gradle :app:assembleDebug --stacktrace 2>&1 | tee build.log
+          ec=${PIPESTATUS[0]}
+          if [ "$ec" -ne 0 ]; then
+            grep -E '^e: |error:|AAPT|Execution failed|What went wrong' -A2 build.log | head -40 | while IFS= read -r line; do echo "::error::${line}"; done
+          fi
+          exit $ec
       - uses: actions/upload-artifact@v4
         with:
           name: VirtualClicker-debug
