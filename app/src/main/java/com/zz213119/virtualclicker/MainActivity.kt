@@ -1153,7 +1153,11 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openInputStream(uri)?.use { it.readBytes().let { b -> if (b.size > 1_000_000) null else String(b, Charsets.UTF_8) } }
             }.getOrNull()
             val box = importInputRef
-            if (box != null && raw != null) box.setText(raw) else importScriptFromText(raw)
+            if (box != null && raw != null) {
+                box.setText(raw)
+            } else {
+                importScriptFromText(raw)
+            }
         }
     }
     private var importInputRef: android.widget.EditText? = null
@@ -1588,8 +1592,12 @@ class MainActivity : AppCompatActivity() {
         }
         view.findViewById<View>(R.id.importCancel).setOnClickListener { dialog.dismiss() }
         view.findViewById<View>(R.id.importConfirm).setOnClickListener {
-            if (importScriptFromText(input.text?.toString())) dialog.dismiss()
-            else input.error = "不是有效的脚本内容"
+            val ok = importScriptFromText(input.text?.toString())
+            if (ok) {
+                dialog.dismiss()
+            } else {
+                input.error = "不是有效的脚本内容"
+            }
         }
         dialog.show()
         dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
