@@ -22,18 +22,63 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="16dp"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="12dp"
             android:paddingBottom="32dp">
 
             <TextView
                 android:id="@+id/title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:text="VirtualClicker"
                 android:textColor="@color/vc_text"
-                android:textSize="26sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/homeStatusCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card_primary"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="20dp">
+
+                <ImageView
+                    android:id="@+id/homeStatusIcon"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_warning"
+                    android:tint="@color/vc_on_primary_container" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/homeStatusTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="后台未连接"
+                        android:textColor="@color/vc_on_primary_container"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/homeStatusSub"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text=""
+                        android:textColor="@color/vc_on_primary_container"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
 
             <FrameLayout
                 android:layout_width="match_parent"
@@ -315,78 +360,85 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="16dp"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="12dp"
             android:paddingBottom="32dp">
 
             <TextView
+                
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:text="脚本"
                 android:textColor="@color/vc_text"
-                android:textSize="26sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
-            <TextView
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="20dp">
+<TextView
             android:id="@+id/yihuanTitle"
             style="@style/VC.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="异环 · 店长特供 1-1" />
-            <TextView
+            android:text="异环 · 店长特供 1-1" /><TextView
             android:id="@+id/yihuanHelp"
             style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在上面启动虚拟屏。" />
-            <Button
+            android:text="循环：选 1-1 → 开始营业 → 点锤子 → 退出 → 领取；体力耗尽时发通知。请先在上面启动虚拟屏。" /><Button
             android:id="@+id/runYihuanShopTask"
             style="@style/Widget.VC.Button.Filled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="开始自动刷" />
-            <Button
+            android:text="开始自动刷" /><Button
             android:id="@+id/screenOffButton"
             style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="熄屏挂机（只关屏幕，系统不休眠）" />
+            </LinearLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="24dp"
-            android:background="@color/vc_outline" />
-            <TextView
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="20dp">
+<TextView
             android:id="@+id/appsTitle"
             style="@style/VC.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="应用与脚本" />
-            <Button
+            android:text="应用与脚本" /><Button
             android:id="@+id/listApps"
             style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="选择要放进虚拟屏的应用" />
-            <TextView
+            android:text="选择要放进虚拟屏的应用" /><TextView
             android:id="@+id/appList"
             style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="" />
-            <Button
+            android:text="" /><Button
             android:id="@+id/openScriptEditor"
             style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="脚本编辑器（自动精灵模式）" />
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>
@@ -403,38 +455,97 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="16dp"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="12dp"
             android:paddingBottom="32dp">
 
             <TextView
+                
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:text="设置"
                 android:textColor="@color/vc_text"
-                android:textSize="26sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
-        <TextView
-            style="@style/VC.Label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="连接" />
+            <LinearLayout
+                android:id="@+id/openSettings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card_primary"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?android:attr/selectableItemBackground"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="20dp">
+
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_settings"
+                    android:tint="@color/vc_on_primary_container" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="应用设置"
+                        android:textColor="@color/vc_on_primary_container"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="启动模式 · 任务参数 · AI 助手 · 通知与电池 · 日志"
+                        android:textColor="@color/vc_on_primary_container"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_chevron"
+                    android:tint="@color/vc_on_primary_container" />
+            </LinearLayout>
+
             <TextView
+                style="@style/VC.Label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="24dp"
+                android:text="连接" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="20dp">
+<TextView
             android:id="@+id/shizukuStatus"
             style="@style/VC.Section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Shizuku：检查中…" />
-            <TextView
+            android:text="Shizuku：检查中…" /><TextView
             android:id="@+id/backendStatus"
             style="@style/VC.Body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="后台后端：未连接" />
-            <LinearLayout
+            android:text="后台后端：未连接" /><LinearLayout
             android:id="@+id/connectRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -455,8 +566,7 @@
             android:layout_weight="1"
             android:layout_marginStart="8dp"
             android:text="连接后端" />
-        </LinearLayout>
-            <Button
+        </LinearLayout><Button
             android:id="@+id/resetBackend"
             style="@style/Widget.VC.Button.Tonal"
             android:layout_width="0dp"
@@ -464,66 +574,56 @@
             android:layout_weight="1"
             android:layout_marginStart="8dp"
             android:text="重置后台服务" />
+            </LinearLayout>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="24dp"
-            android:background="@color/vc_outline" />
-
-        <TextView
-            style="@style/VC.Label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="虚拟屏" />
             <TextView
+                style="@style/VC.Label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="24dp"
+                android:text="虚拟屏" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="20dp">
+<TextView
             android:id="@+id/resolutionLabel"
             style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="分辨率" />
-            <Spinner
+            android:text="分辨率" /><Spinner
             android:id="@+id/resolutionSpinner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:spinnerMode="dropdown" />
-            <TextView
+            android:spinnerMode="dropdown" /><TextView
             android:id="@+id/resolutionInfo"
             style="@style/VC.Caption"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:text="当前：自动竖屏" />
-            <Button
+            android:text="当前：自动竖屏" /><Button
             android:id="@+id/displayModeButton"
             style="@style/Widget.VC.Button.Tonal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="游戏模式：关闭（自动比例）" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="24dp"
-            android:background="@color/vc_outline" />
-            <Button
-                android:id="@+id/openSettings"
-                style="@style/Widget.VC.Button.Tonal"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="更多设置（日志 / 静音 / AI 配置 / 调试开关）" />
-            <LinearLayout
+            </LinearLayout>
+<LinearLayout
             android:id="@+id/debugCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="0dp"
+            android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="0dp">
+            android:padding="20dp">
 
         <TextView
             android:id="@+id/inputTitle"
@@ -700,43 +800,101 @@
     <LinearLayout
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/vc_bg"
-        android:orientation="vertical">
+        android:layout_height="80dp"
+        android:background="@color/vc_card"
+        android:orientation="horizontal">
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/vc_outline" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:orientation="horizontal">
-
-            <TextView
+            <LinearLayout
                 android:id="@+id/navHome"
-                style="@style/VC.NavItem"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:text="首页" />
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <TextView
+                <FrameLayout
+                    android:id="@+id/navHomePill"
+                    android:layout_width="64dp"
+                    android:layout_height="32dp">
+
+                    <ImageView
+                        android:id="@+id/navHomeIcon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_home" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/navHomeLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="首页"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/navScripts"
-                style="@style/VC.NavItem"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:text="脚本" />
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <TextView
+                <FrameLayout
+                    android:id="@+id/navScriptsPill"
+                    android:layout_width="64dp"
+                    android:layout_height="32dp">
+
+                    <ImageView
+                        android:id="@+id/navScriptsIcon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_code" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/navScriptsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="脚本"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/navSettings"
-                style="@style/VC.NavItem"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:text="设置" />
-        </LinearLayout>
+                android:background="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <FrameLayout
+                    android:id="@+id/navSettingsPill"
+                    android:layout_width="64dp"
+                    android:layout_height="32dp">
+
+                    <ImageView
+                        android:id="@+id/navSettingsIcon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_settings" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/navSettingsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="设置"
+                    android:textSize="12sp" />
+            </LinearLayout>
     </LinearLayout>
 </LinearLayout>

@@ -310,7 +310,7 @@ class MainActivity : AppCompatActivity() {
         controller = ShizukuController(packageName)
         VirtualDisplayManager.init(this)
 
-        findViewById<Button>(R.id.openSettings).setOnClickListener {
+        findViewById<View>(R.id.openSettings).setOnClickListener {
             startActivity(Intent(this, com.zz213119.virtualclicker.ui.SettingsActivity::class.java))
         }
 
@@ -1444,6 +1444,7 @@ class MainActivity : AppCompatActivity() {
 
 
     private var currentTab = 0
+    private var lastHomeStatusKey = ""
 
     /** 底部三个标签：首页 / 脚本 / 设置。所有控件仍在同一个 Activity 里，只切换显示哪一页。 */
     private fun setupBottomNav() {
@@ -1453,19 +1454,61 @@ class MainActivity : AppCompatActivity() {
             v.setPadding(0, b.top, 0, b.bottom)
             insets
         }
-        val pages = listOf(R.id.pageHome, R.id.pageScripts, R.id.pageSettings)
-        val tabs = listOf(R.id.navHome, R.id.navScripts, R.id.navSettings)
-        fun select(i: Int) {
-            currentTab = i
-            pages.forEachIndexed { idx, id -> findViewById<View>(id).visibility = if (idx == i) View.VISIBLE else View.GONE }
-            tabs.forEachIndexed { idx, id ->
-                val tv = findViewById<TextView>(id)
-                tv.setTextColor(getColor(if (idx == i) R.color.vc_primary else R.color.vc_text2))
-                tv.setTypeface(null, if (idx == i) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        listOf(R.id.navHome, R.id.navScripts, R.id.navSettings).forEachIndexed { i, id ->
+            findViewById<View>(id).setOnClickListener { selectTab(i) }
+        }
+        // 首页顶部的状态卡片：点一下直接去“设置”页的连接区
+        findViewById<View>(R.id.homeStatusCard).setOnClickListener { selectTab(2) }
+        selectTab(currentTab)
+    }
+
+    private fun selectTab(i: Int) {
+        currentTab = i
+        listOf(R.id.pageHome, R.id.pageScripts, R.id.pageSettings).forEachIndexed { idx, id ->
+            findViewById<View>(id).visibility = if (idx == i) View.VISIBLE else View.GONE
+        }
+        val names = listOf("Home", "Scripts", "Settings")
+        names.forEachIndexed { idx, n ->
+            val res = resources
+            fun rid(s: String) = res.getIdentifier("nav$n$s", "id", packageName)
+            val on = idx == i
+            findViewById<View>(rid("Pill")).background =
+                if (on) androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_nav_pill) else null
+            findViewById<android.widget.ImageView>(rid("Icon")).imageTintList = android.content.res.ColorStateList.valueOf(
+                getColor(if (on) R.color.vc_on_primary_container else R.color.vc_text2)
+            )
+            findViewById<TextView>(rid("Label")).apply {
+                setTextColor(getColor(if (on) R.color.vc_text else R.color.vc_text2))
+                setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
             }
         }
-        tabs.forEachIndexed { i, id -> findViewById<View>(id).setOnClickListener { select(i) } }
-        select(currentTab)
+    }
+
+    /** 把连接状态同步到首页顶部的状态卡片（每秒调用一次，没变化就不动）。 */
+    private fun syncHomeStatus() {
+        val backend = backendStatus.text.toString()
+        val shizuku = shizukuStatus.text.toString().lineSequence().firstOrNull().orEmpty()
+        val connected = backend.contains("已连接")
+        val connecting = backend.contains("连接中")
+        val key = "$connected|$connecting|$shizuku"
+        if (key == lastHomeStatusKey) return
+        lastHomeStatusKey = key
+        val title = when {
+            connected -> "后台已连接"
+            connecting -> "正在连接后台…"
+            else -> "后台未连接"
+        }
+        findViewById<TextView>(R.id.homeStatusTitle).text = title
+        findViewById<TextView>(R.id.homeStatusSub).text =
+            if (connected) shizuku else "$shizuku · 点这里去“设置”连接"
+        val ok = connected || connecting
+        findViewById<android.widget.ImageView>(R.id.homeStatusIcon).setImageResource(if (ok) R.drawable.ic_check else R.drawable.ic_warning)
+        val card = findViewById<View>(R.id.homeStatusCard)
+        card.setBackgroundResource(if (ok) R.drawable.bg_card_primary else R.drawable.bg_card_error)
+        val fg = getColor(if (ok) R.color.vc_on_primary_container else R.color.vc_on_error_container)
+        findViewById<android.widget.ImageView>(R.id.homeStatusIcon).imageTintList = android.content.res.ColorStateList.valueOf(fg)
+        findViewById<TextView>(R.id.homeStatusTitle).setTextColor(fg)
+        findViewById<TextView>(R.id.homeStatusSub).setTextColor(fg)
     }
 
     override fun onResume() {
@@ -1475,11 +1518,13 @@ class MainActivity : AppCompatActivity() {
         setupAiPanel()
         refreshStatus()
         refreshYihuanCard()
+        syncHomeStatus()
         uiPollJob?.cancel()
         uiPollJob = lifecycleScope.launch {
             while (true) {
                 refreshYihuanCard()
                 adoptOneClickDisplay()
+                syncHomeStatus()
                 kotlinx.coroutines.delay(1000)
             }
         }
