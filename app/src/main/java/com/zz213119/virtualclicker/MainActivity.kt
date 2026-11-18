@@ -1554,19 +1554,22 @@ class MainActivity : AppCompatActivity() {
             v.visibility = if (idx == i || (animate && idx == old && old != i)) View.VISIBLE else View.GONE
         }
         moveIndicator(i, animate && old != i)
+        // 注意：这里要用 findViewById 而不是 previewContainer 属性——setupBottomNav 在 onCreate 里很早就会调用 selectTab，
+        // 那时 previewContainer 还没初始化，直接用会在启动时闪退。
+        val preview = findViewById<View>(R.id.previewContainer)
         // 虚拟屏预览(SurfaceView)不参与过渡动画：离开首页时立刻藏起来，回到首页时等动画结束后再显示，
         // 避免它不透明地跟着页面滑动。
-        previewRevealRunnable?.let { previewContainer.removeCallbacks(it) }
+        previewRevealRunnable?.let { preview.removeCallbacks(it) }
         previewRevealRunnable = null
         if (animate && old != i && (old == 0 || i == 0)) {
-            previewContainer.visibility = View.INVISIBLE
+            preview.visibility = View.INVISIBLE
             if (i == 0) {
-                val r = Runnable { previewContainer.visibility = View.VISIBLE; previewRevealRunnable = null }
+                val r = Runnable { preview.visibility = View.VISIBLE; previewRevealRunnable = null }
                 previewRevealRunnable = r
-                previewContainer.postDelayed(r, 360)
+                preview.postDelayed(r, 360)
             }
         } else if (i == 0) {
-            previewContainer.visibility = View.VISIBLE
+            preview.visibility = View.VISIBLE
         }
         if (!animate || old == i) return
         // 页面过渡：新页面从行进方向轻轻滑入并淡入，旧页面淡出并稍微后退
