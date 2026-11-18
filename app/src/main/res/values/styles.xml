@@ -66,4 +66,17 @@
         <item name="android:textColor">@color/vc_text2</item>
         <item name="android:background">?android:attr/selectableItemBackground</item>
     </style>
+    <style name="Widget.VC.Button.Chip">
+        <item name="android:minHeight">0dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+    <style name="Widget.VC.Button.SendFilled" parent="Widget.VC.Button.Filled">
+        <item name="android:minHeight">0dp</item>
+        <item name="android:minWidth">64dp</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
 </resources>

@@ -1581,6 +1581,42 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
+
+    private var autoConnecting = false
+    private var lastAutoConnectAt = 0L
+
+    /** 进入应用 / 回到前台时自动检测并连接后台后端（和点“连接后端”一样），不用每次手动点。 */
+    private fun autoConnectBackend() {
+        if (autoConnecting) return
+        if (backendStatus.text.toString().contains("已连接")) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastAutoConnectAt < 4000) return
+        lastAutoConnectAt = now
+        if (Prefs.backendMode(this) == Prefs.MODE_ROOT) {
+            autoConnecting = true
+            backendStatus.text = "后台后端：Root 连接中…"
+            lifecycleScope.launch {
+                val ok = withContext(Dispatchers.IO) { VirtualDisplayManager.ensureBound() }
+                backendStatus.text = if (ok) "后台后端：Root 已连接" else "后台后端：Root 连接失败"
+                refreshStatus()
+                autoConnecting = false
+            }
+            return
+        }
+        if (!controller.isShizukuAvailable() || !runCatching { controller.hasPermission() }.getOrDefault(false)) return
+        autoConnecting = true
+        backendStatus.text = "后台后端：连接中…"
+        controller.bind { connected ->
+            runOnUiThread {
+                backendStatus.text = if (connected) {
+                    val info = runCatching { controller.service?.ping() }.getOrNull()
+                    "后台后端：已连接\n$info"
+                } else "后台后端：连接失败"
+                autoConnecting = false
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         refreshSavedScripts()
@@ -1588,6 +1624,7 @@ class MainActivity : AppCompatActivity() {
             if (Prefs.showDebugTools(this)) android.view.View.VISIBLE else android.view.View.GONE
         setupAiPanel()
         refreshStatus()
+        autoConnectBackend()
         refreshYihuanCard()
         syncHomeStatus()
         uiPollJob?.cancel()
@@ -1677,7 +1714,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshStatus() {
         if (Prefs.backendMode(this) == Prefs.MODE_ROOT) {
-            shizukuStatus.text = "启动模式：Root（点“请求授权”检测）"
+            shizukuStatus.text =
+                if (backendStatus.text.contains("已连接")) "Root：已授权" else "启动模式：Root（点“请求授权”检测）"
             return
         }
         val available = controller.isShizukuAvailable()
