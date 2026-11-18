@@ -24,7 +24,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="16dp"
             android:paddingTop="12dp"
-            android:paddingBottom="32dp">
+            android:paddingBottom="112dp">
 
             <TextView
                 android:id="@+id/title"
@@ -346,7 +346,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="16dp"
             android:paddingTop="12dp"
-            android:paddingBottom="32dp">
+            android:paddingBottom="112dp">
 
             <TextView
                 
@@ -470,7 +470,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="16dp"
             android:paddingTop="12dp"
-            android:paddingBottom="32dp">
+            android:paddingBottom="112dp">
 
             <TextView
                 
@@ -807,42 +807,50 @@
 
         </LinearLayout>
     </ScrollView>
-    </FrameLayout>
 
-    <LinearLayout
-        android:id="@+id/bottomNav"
-        android:layout_width="match_parent"
-        android:layout_height="80dp"
-        android:background="@color/vc_card"
-        android:orientation="horizontal">
+        <FrameLayout
+            android:id="@+id/bottomNav"
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:layout_gravity="bottom"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_glass_nav"
+            android:elevation="6dp">
+
+            <View
+                android:id="@+id/navIndicator"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/bg_glass_indicator" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
 
             <LinearLayout
                 android:id="@+id/navHome"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="?android:attr/selectableItemBackground"
                 android:gravity="center"
                 android:orientation="vertical">
 
-                <FrameLayout
-                    android:id="@+id/navHomePill"
-                    android:layout_width="64dp"
-                    android:layout_height="32dp">
-
-                    <ImageView
-                        android:id="@+id/navHomeIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_gravity="center"
-                        android:src="@drawable/ic_home" />
-                </FrameLayout>
+                <ImageView
+                    android:id="@+id/navHomeIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_home" />
 
                 <TextView
                     android:id="@+id/navHomeLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="3dp"
                     android:text="首页"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -852,28 +860,20 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="?android:attr/selectableItemBackground"
                 android:gravity="center"
                 android:orientation="vertical">
 
-                <FrameLayout
-                    android:id="@+id/navScriptsPill"
-                    android:layout_width="64dp"
-                    android:layout_height="32dp">
-
-                    <ImageView
-                        android:id="@+id/navScriptsIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_gravity="center"
-                        android:src="@drawable/ic_code" />
-                </FrameLayout>
+                <ImageView
+                    android:id="@+id/navScriptsIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_code" />
 
                 <TextView
                     android:id="@+id/navScriptsLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="3dp"
                     android:text="脚本"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -883,30 +883,26 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="?android:attr/selectableItemBackground"
                 android:gravity="center"
                 android:orientation="vertical">
 
-                <FrameLayout
-                    android:id="@+id/navSettingsPill"
-                    android:layout_width="64dp"
-                    android:layout_height="32dp">
-
-                    <ImageView
-                        android:id="@+id/navSettingsIcon"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_gravity="center"
-                        android:src="@drawable/ic_settings" />
-                </FrameLayout>
+                <ImageView
+                    android:id="@+id/navSettingsIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_settings" />
 
                 <TextView
                     android:id="@+id/navSettingsLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="3dp"
                     android:text="设置"
                     android:textSize="12sp" />
             </LinearLayout>
-    </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+    </FrameLayout>
+
+
 </LinearLayout>

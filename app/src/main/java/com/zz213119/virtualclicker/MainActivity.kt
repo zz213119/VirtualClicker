@@ -1457,6 +1457,11 @@ class MainActivity : AppCompatActivity() {
 
     private var currentTab = 0
     private var lastHomeStatusKey = ""
+    private var indL = 0f
+    private var indR = 0f
+    private var indAnim: android.animation.AnimatorSet? = null
+    private val tabIds = listOf(R.id.navHome, R.id.navScripts, R.id.navSettings)
+    private val pageIds = listOf(R.id.pageHome, R.id.pageScripts, R.id.pageSettings)
 
     /** 底部三个标签：首页 / 脚本 / 设置。所有控件仍在同一个 Activity 里，只切换显示哪一页。 */
     private fun setupBottomNav() {
@@ -1466,34 +1471,105 @@ class MainActivity : AppCompatActivity() {
             v.setPadding(0, b.top, 0, b.bottom)
             insets
         }
-        listOf(R.id.navHome, R.id.navScripts, R.id.navSettings).forEachIndexed { i, id ->
-            findViewById<View>(id).setOnClickListener { selectTab(i) }
-        }
+        tabIds.forEachIndexed { i, id -> findViewById<View>(id).setOnClickListener { selectTab(i) } }
         // 首页顶部的状态卡片：点一下直接去“设置”页的连接区
         findViewById<View>(R.id.homeStatusCard).setOnClickListener { selectTab(2) }
-        selectTab(currentTab)
+        // 液态玻璃指示块：布局完成后（或尺寸变化时）把它放到当前标签上，不带动画
+        findViewById<View>(R.id.bottomNav).addOnLayoutChangeListener { _, l, _, r, _, ol, _, or2, _ ->
+            if ((r - l) != (or2 - ol) || indR <= indL) moveIndicator(currentTab, animate = false)
+        }
+        selectTab(currentTab, animate = false)
     }
 
-    private fun selectTab(i: Int) {
-        currentTab = i
-        listOf(R.id.pageHome, R.id.pageScripts, R.id.pageSettings).forEachIndexed { idx, id ->
-            findViewById<View>(id).visibility = if (idx == i) View.VISIBLE else View.GONE
+    private fun tabBounds(i: Int): Pair<Float, Float> {
+        val v = findViewById<View>(tabIds[i])
+        val inset = dp(6).toFloat()
+        return (v.left + inset) to (v.right - inset)
+    }
+
+    private fun applyIndicator(l: Float, r: Float) {
+        indL = l; indR = r
+        val ind = findViewById<View>(R.id.navIndicator)
+        ind.translationX = l
+        val w = (r - l).toInt().coerceAtLeast(1)
+        if (ind.layoutParams.width != w) {
+            ind.layoutParams.width = w
+            ind.requestLayout()
         }
-        val names = listOf("Home", "Scripts", "Settings")
-        names.forEachIndexed { idx, n ->
-            val res = resources
-            fun rid(s: String) = res.getIdentifier("nav$n$s", "id", packageName)
+    }
+
+    /** 指示块在标签间“流”过去：先伸出去（前沿带一点回弹），后沿再追上来，像液体被拉伸又收拢。 */
+    private fun moveIndicator(i: Int, animate: Boolean) {
+        val (tl, tr) = tabBounds(i)
+        if (tr <= tl) return
+        indAnim?.cancel()
+        if (!animate || indR <= indL) {
+            applyIndicator(tl, tr)
+            return
+        }
+        val fromL = indL
+        val fromR = indR
+        val right = tl > fromL
+        var l = fromL
+        var r = fromR
+        val aL = android.animation.ValueAnimator.ofFloat(fromL, tl).apply {
+            duration = if (right) 420 else 300
+            startDelay = if (right) 50 else 0
+            interpolator = if (right) android.view.animation.DecelerateInterpolator(1.8f) else android.view.animation.OvershootInterpolator(1.1f)
+            addUpdateListener { l = it.animatedValue as Float; applyIndicator(l, r) }
+        }
+        val aR = android.animation.ValueAnimator.ofFloat(fromR, tr).apply {
+            duration = if (right) 300 else 420
+            startDelay = if (right) 0 else 50
+            interpolator = if (right) android.view.animation.OvershootInterpolator(1.1f) else android.view.animation.DecelerateInterpolator(1.8f)
+            addUpdateListener { r = it.animatedValue as Float; applyIndicator(l, r) }
+        }
+        indAnim = android.animation.AnimatorSet().apply {
+            playTogether(aL, aR)
+            start()
+        }
+    }
+
+    private fun selectTab(i: Int, animate: Boolean = true) {
+        val old = currentTab
+        currentTab = i
+        // 标签颜色
+        listOf("Home", "Scripts", "Settings").forEachIndexed { idx, n ->
+            fun rid(s: String) = resources.getIdentifier("nav$n$s", "id", packageName)
             val on = idx == i
-            findViewById<View>(rid("Pill")).background =
-                if (on) androidx.core.content.ContextCompat.getDrawable(this, R.drawable.bg_nav_pill) else null
             findViewById<android.widget.ImageView>(rid("Icon")).imageTintList = android.content.res.ColorStateList.valueOf(
-                getColor(if (on) R.color.vc_on_primary_container else R.color.vc_text2)
+                getColor(if (on) R.color.vc_primary else R.color.vc_text2)
             )
             findViewById<TextView>(rid("Label")).apply {
-                setTextColor(getColor(if (on) R.color.vc_text else R.color.vc_text2))
+                setTextColor(getColor(if (on) R.color.vc_primary else R.color.vc_text2))
                 setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
             }
         }
+        // 先把所有页面还原到静止状态
+        pageIds.forEachIndexed { idx, id ->
+            val v = findViewById<View>(id)
+            v.animate().cancel()
+            v.alpha = 1f; v.translationX = 0f; v.scaleX = 1f; v.scaleY = 1f
+            v.visibility = if (idx == i || (animate && idx == old && old != i)) View.VISIBLE else View.GONE
+        }
+        moveIndicator(i, animate && old != i)
+        if (!animate || old == i) return
+        // 页面过渡：新页面从行进方向轻轻滑入并淡入，旧页面淡出并稍微后退
+        val dir = if (i > old) 1 else -1
+        val dist = dp(28).toFloat()
+        val inV = findViewById<View>(pageIds[i])
+        val outV = findViewById<View>(pageIds[old])
+        inV.alpha = 0f
+        inV.translationX = dir * dist
+        inV.scaleX = 0.98f; inV.scaleY = 0.98f
+        inV.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f)
+            .setDuration(340).setInterpolator(android.view.animation.DecelerateInterpolator(1.8f)).start()
+        outV.animate().alpha(0f).translationX(-dir * dist * 0.5f)
+            .setDuration(200).setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                outV.visibility = View.GONE
+                outV.alpha = 1f; outV.translationX = 0f
+            }.start()
     }
 
     /** 把连接状态同步到首页顶部的状态卡片（每秒调用一次，没变化就不动）。 */
