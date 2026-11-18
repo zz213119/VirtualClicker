@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="导入脚本"
+        android:textColor="@color/vc_text"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="把脚本内容粘贴或输入到下面的框里（就是“分享”出来的那段文字），也可以直接选择文件。"
+        android:textColor="@color/vc_text2"
+        android:textSize="13sp" />
+
+    <EditText
+        android:id="@+id/importInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_soft"
+        android:gravity="top|start"
+        android:hint="在这里粘贴或输入脚本内容"
+        android:importantForAutofill="no"
+        android:inputType="textMultiLine|textNoSuggestions"
+        android:maxLines="10"
+        android:minLines="6"
+        android:padding="14dp"
+        android:textColor="@color/vc_text"
+        android:textColorHint="@color/vc_text2"
+        android:textSize="13sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/importPickFile"
+            style="@style/Widget.VC.Button.Chip"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="选择文件" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/importCancel"
+            style="@style/Widget.VC.Button.Chip"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="取消" />
+
+        <Button
+            android:id="@+id/importConfirm"
+            style="@style/Widget.VC.Button.SendFilled"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:text="导入" />
+    </LinearLayout>
+</LinearLayout>
