@@ -141,6 +141,16 @@ class SettingsActivity : AppCompatActivity() {
         }
         bindSwitch(R.id.switchAutoScreenOff, "auto_screen_off", Prefs.autoScreenOff(this))
         bindSwitch(R.id.switchDebug, "show_debug_tools", Prefs.showDebugTools(this))
+        bindSwitch(R.id.switchKeepLogs7d, "keep_logs_7d", Prefs.keepLogs7Days(this)) { on ->
+            if (on) {
+                lifecycleScope.launch {
+                    val n = withContext(Dispatchers.IO) {
+                        if (VirtualDisplayManager.ensureBound()) VirtualDisplayManager.pruneLogsRemote(7) else 0
+                    }
+                    logStatus.text = "已开启：只保留最近 7 天，刚清理了 $n 个旧文件"
+                }
+            }
+        }
 
         findViewById<Button>(R.id.openNotifSettings).setOnClickListener {
             startActivity(

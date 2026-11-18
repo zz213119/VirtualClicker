@@ -676,6 +676,16 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         return n
     }
 
+    override fun pruneLogs(keepDays: Int): Int {
+        val cutoff = System.currentTimeMillis() - keepDays.coerceAtLeast(1) * 24L * 3600_000L
+        var n = 0
+        for (d in listOf(logsDir(), shotsDir())) {
+            d.listFiles()?.forEach { if (it.isFile && it.lastModified() < cutoff && it.delete()) n++ }
+        }
+        if (n > 0) appendLog("LOG PRUNE", "deleted=$n keepDays=$keepDays")
+        return n
+    }
+
     override fun saveShot(name: String, data: ByteArray): Boolean {
         if (!Regex("[A-Za-z0-9_.-]+\\.jpg").matches(name)) return false
         return runCatching {

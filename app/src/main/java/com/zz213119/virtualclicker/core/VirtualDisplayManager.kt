@@ -39,7 +39,7 @@ object VirtualDisplayManager {
             .daemon(true)           // Keep the Shizuku UserService alive for background scripts.
             .processNameSuffix("vd_service")
             .debuggable(BuildConfig.DEBUG)
-            .version(28)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
+            .version(29)   // 每次修改 AIDL / UserService 代码都要 +1，否则 Shizuku 会继续复用旧的守护进程
     }
 
     val isBound: Boolean get() = service != null
@@ -77,6 +77,9 @@ object VirtualDisplayManager {
 
     fun readLog(name: String, offset: Long, maxLen: Int): ByteArray? =
         runCatching { service?.readLog(name, offset, maxLen) }.getOrNull()
+
+    fun pruneLogsRemote(keepDays: Int): Int =
+        runCatching { service?.pruneLogs(keepDays) ?: 0 }.getOrDefault(0)
 
     fun clearLogsRemote(): Int =
         runCatching { service?.clearLogs() ?: 0 }.getOrDefault(0)

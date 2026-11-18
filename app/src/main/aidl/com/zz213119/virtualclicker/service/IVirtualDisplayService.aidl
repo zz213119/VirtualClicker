@@ -71,6 +71,8 @@ interface IVirtualDisplayService {
     String[] listLogs();
     byte[] readLog(String name, long offset, int maxLen);
     int clearLogs();
+    // 删除超过 keepDays 天的日志和截图，返回删除的文件数
+    int pruneLogs(int keepDays);
     boolean saveShot(String name, in byte[] data);
 
     // Power hygiene: the app marks the service busy while a task/script runs and sends a

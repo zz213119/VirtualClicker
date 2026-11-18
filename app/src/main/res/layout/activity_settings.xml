@@ -299,6 +299,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:text="日志目录：Android/data/com.zz213119.virtualclicker/files/logs" />
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchKeepLogs7d"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="44dp"
+            android:text="只保留最近 7 天日志（自动删除更早的日志和截图）"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
         <Button
             android:id="@+id/shareLog"
             style="@style/Widget.VC.Button.Filled"

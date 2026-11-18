@@ -15,7 +15,6 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextClock
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -35,6 +34,8 @@ class AodActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var content: LinearLayout
     private lateinit var statusText: TextView
+    private lateinit var time: TextView
+    private lateinit var date: TextView
     private lateinit var hintText: TextView
 
     private val shiftRunnable = object : Runnable {
@@ -48,7 +49,7 @@ class AodActivity : AppCompatActivity() {
     private val statusRunnable = object : Runnable {
         override fun run() {
             refreshStatus()
-            handler.postDelayed(this, 3_000)
+            handler.postDelayed(this, 2_000)
         }
     }
 
@@ -66,21 +67,20 @@ class AodActivity : AppCompatActivity() {
         val gray = Color.rgb(150, 150, 150)
         val dim = Color.rgb(95, 95, 95)
 
-        val time = TextClock(this).apply {
-            format24Hour = "HH:mm"
-            format12Hour = "HH:mm"
-            textSize = 96f
+        // 之前用 TextClock，实机上分钟被截掉只剩“19:”；改成自己按时刷新的普通 TextView，并让它占满整行宽度。
+        time = TextView(this).apply {
+            textSize = 88f
             setTextColor(gray)
-            typeface = android.graphics.Typeface.create("sans-serif-thin", android.graphics.Typeface.NORMAL)
+            typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER
-            includeFontPadding = false
+            setSingleLine(true)
+            maxLines = 1
         }
-        val date = TextClock(this).apply {
-            format24Hour = "M月d日 EEEE"
-            format12Hour = "M月d日 EEEE"
+        date = TextView(this).apply {
             textSize = 18f
             setTextColor(gray)
             gravity = Gravity.CENTER
+            setSingleLine(true)
         }
         statusText = TextView(this).apply {
             textSize = 14f
@@ -90,9 +90,9 @@ class AodActivity : AppCompatActivity() {
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            addView(time)
-            addView(date, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (8 * resources.displayMetrics.density).toInt() })
-            addView(statusText, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (24 * resources.displayMetrics.density).toInt() })
+            addView(time, LinearLayout.LayoutParams(-1, -2))
+            addView(date, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (8 * resources.displayMetrics.density).toInt() })
+            addView(statusText, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (24 * resources.displayMetrics.density).toInt() })
         }
         hintText = TextView(this).apply {
             text = "双击屏幕退出"
@@ -102,7 +102,7 @@ class AodActivity : AppCompatActivity() {
         }
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
-            addView(content, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+            addView(content, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
             addView(
                 hintText,
                 FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
@@ -143,6 +143,9 @@ class AodActivity : AppCompatActivity() {
     }
 
     private fun refreshStatus() {
+        val now = java.util.Date()
+        time.text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(now)
+        date.text = java.text.SimpleDateFormat("M月d日 EEEE", java.util.Locale.getDefault()).format(now)
         val task = when (val id = ScriptRunnerService.activeTaskId) {
             null, "" -> "空闲"
             ScriptRunnerService.TASK_YIHUAN_SHOP -> "异环 · 店长特供 运行中"

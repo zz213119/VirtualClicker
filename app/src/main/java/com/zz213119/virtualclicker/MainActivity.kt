@@ -1584,6 +1584,18 @@ class MainActivity : AppCompatActivity() {
 
     private var autoConnecting = false
     private var lastAutoConnectAt = 0L
+    private var lastPruneAt = 0L
+
+    /** 开启“只保留最近 7 天日志”后，每次回到应用时（最多每 6 小时一次）清理旧日志。 */
+    private fun pruneLogsIfEnabled() {
+        if (!Prefs.keepLogs7Days(this)) return
+        val now = System.currentTimeMillis()
+        if (now - lastPruneAt < 6 * 3600_000L) return
+        lastPruneAt = now
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (VirtualDisplayManager.ensureBound()) VirtualDisplayManager.pruneLogsRemote(7)
+        }
+    }
 
     /** 进入应用 / 回到前台时自动检测并连接后台后端（和点“连接后端”一样），不用每次手动点。 */
     private fun autoConnectBackend() {
@@ -1625,6 +1637,7 @@ class MainActivity : AppCompatActivity() {
         setupAiPanel()
         refreshStatus()
         autoConnectBackend()
+        pruneLogsIfEnabled()
         refreshYihuanCard()
         syncHomeStatus()
         uiPollJob?.cancel()
