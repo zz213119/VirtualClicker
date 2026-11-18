@@ -66,7 +66,7 @@
         <item name="android:textColor">@color/vc_text2</item>
         <item name="android:background">?android:attr/selectableItemBackground</item>
     </style>
-    <style name="Widget.VC.Button.Chip">
+    <style name="Widget.VC.Button.Chip" parent="Widget.VC.Button.Tonal">
         <item name="android:minHeight">0dp</item>
         <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">12dp</item>

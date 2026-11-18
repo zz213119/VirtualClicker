@@ -1145,8 +1145,10 @@ class MainActivity : AppCompatActivity() {
             inputTestStatus.text = "虚拟屏已释放"
         }
     }
+    // 用 GetContent(ACTION_GET_CONTENT)：系统选择器侧边栏会列出所有支持“选择文件”的应用（各种文件管理器、MT 管理器等），
+    // 而 OpenDocument 只会列出系统自带的文档来源。
     private val importScriptLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
             val raw = runCatching {
@@ -1588,7 +1590,7 @@ class MainActivity : AppCompatActivity() {
         importInputRef = input
         dialog.setOnDismissListener { importInputRef = null }
         view.findViewById<View>(R.id.importPickFile).setOnClickListener {
-            importScriptLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+            importScriptLauncher.launch("*/*")
         }
         view.findViewById<View>(R.id.importCancel).setOnClickListener { dialog.dismiss() }
         view.findViewById<View>(R.id.importConfirm).setOnClickListener {
