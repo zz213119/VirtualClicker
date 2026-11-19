@@ -1566,7 +1566,7 @@ class MainActivity : AppCompatActivity() {
             if (i == 0) {
                 val r = Runnable { preview.visibility = View.VISIBLE; previewRevealRunnable = null }
                 previewRevealRunnable = r
-                preview.postDelayed(r, 360)
+                preview.postDelayed(r, 150)
             }
         } else if (i == 0) {
             preview.visibility = View.VISIBLE
