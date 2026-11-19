@@ -563,7 +563,15 @@ class OneClickTask(
         var pendingDx = 0f
         // 进店后“店长特供”选项要往左走才会出现（实测）。选项只在靠近柜台的一小段距离内显示，跑过去只会闪 1~2 帧，
         // 所以每一步只走 0.3 秒左右（约 1~2 米）就停下看一眼；停在范围内选项会一直显示，不会漏掉。
+        // 进店后的试探路线（摇杆方向相对镜头，镜头此时朝着店里；每步走完停下读一次选项）。
+        // 对照 11-19 21:15 的手动录屏：进门后先一直往前，再往右前方靠到吧台左端，“店长特供/管理店铺”就会出现。
+        // 之前的路线一上来就往左前方试探，结果一直在店左侧后墙附近打转，碰不到吧台。
         val insidePattern = ArrayList<FloatArray>().apply {
+            repeat(4) { add(floatArrayOf(0f, -1f, 600f)) }          // 进门后直走到店中间
+            repeat(5) { add(floatArrayOf(0.45f, -0.9f, 500f)) }     // 往右前方走向吧台
+            repeat(3) { add(floatArrayOf(0.8f, -0.6f, 400f)) }      // 再偏右一点靠近吧台左端
+            repeat(2) { add(floatArrayOf(0f, -1f, 300f)) }
+            // 以下是兜底：原来的左偏试探
             repeat(3) { add(floatArrayOf(-0.7f, -0.7f, 300f)) }
             repeat(3) { add(floatArrayOf(-1f, 0f, 300f)) }
             repeat(2) { add(floatArrayOf(0f, -1f, 300f)) }
