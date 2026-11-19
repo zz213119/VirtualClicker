@@ -126,7 +126,9 @@ class YihuanShopTask(
     private fun isBlank(bmp: Bitmap): Boolean =
         FrameOps.boxGrid(bmp, 0f, 0f, 1f, 1f, 8, 4).average() < 2.0
 
-    private suspend fun grab(maxW: Int = 960): Bitmap? {
+    private var inPrompt = false
+
+    private suspend fun rawGrab(maxW: Int = 960): Bitmap? {
         repeat(4) {
             val bytes = VirtualDisplayManager.captureFrame(displayId, maxW)
             val bmp = bytes?.let { FrameOps.decode(it) }
@@ -134,6 +136,22 @@ class YihuanShopTask(
             delay(250)
         }
         return null
+    }
+
+    /** 取帧，并顺便处理云异环的“网络不稳定，是否降到高清码率”弹窗（勾选“本次启动不再提示”并点“是”）。 */
+    private suspend fun grab(maxW: Int = 960): Bitmap? {
+        val f = rawGrab(maxW) ?: return null
+        if (!inPrompt && NetworkPrompt.looksLikePrompt(f)) {
+            inPrompt = true
+            try {
+                if (NetworkPrompt.handle(f, null, { x, y -> tap(x, y) }, { rawGrab() }, { log(it) })) {
+                    return rawGrab(maxW) ?: f
+                }
+            } finally {
+                inPrompt = false
+            }
+        }
+        return f
     }
 
     private suspend fun waitFor(timeoutMs: Long, intervalMs: Long = 1000, cond: (Bitmap) -> Boolean): Bitmap? {

@@ -100,7 +100,9 @@ class OneClickTask(
         return g.average() < 2.0
     }
 
-    private suspend fun grab(): Bitmap? {
+    private var inPrompt = false
+
+    private suspend fun rawGrab(): Bitmap? {
         repeat(3) {
             val bytes = VirtualDisplayManager.captureFrame(displayId, W)
             val bmp = bytes?.let { FrameOps.decode(it) }
@@ -108,6 +110,23 @@ class OneClickTask(
             delay(300)
         }
         return null
+    }
+
+    /** 取帧，并顺便处理云异环的“网络不稳定，是否降到高清码率”弹窗（勾选“本次启动不再提示”并点“是”）。 */
+    private suspend fun grab(): Bitmap? {
+        val f = rawGrab() ?: return null
+        if (!inPrompt && NetworkPrompt.looksLikePrompt(f)) {
+            inPrompt = true
+            try {
+                onStatus("处理“网络不稳定”提示…")
+                if (NetworkPrompt.handle(f, null, { x, y -> tap(x, y) }, { rawGrab() }, { log(it) })) {
+                    return rawGrab() ?: f
+                }
+            } finally {
+                inPrompt = false
+            }
+        }
+        return f
     }
 
     private suspend fun tap(nx: Float, ny: Float): Boolean {
@@ -129,6 +148,17 @@ class OneClickTask(
         val lines = runCatching { GameOcr.read(f) }.getOrElse {
             log("ocr error: ${it.message}")
             emptyList()
+        }
+        if (!inPrompt && NetworkPrompt.isPrompt(lines)) {
+            inPrompt = true
+            try {
+                NetworkPrompt.handle(f, lines, { x, y -> tap(x, y) }, { rawGrab() }, { log(it) })
+            } finally {
+                inPrompt = false
+            }
+            val f2 = rawGrab() ?: return null
+            val l2 = runCatching { GameOcr.read(f2) }.getOrDefault(emptyList())
+            return f2 to l2
         }
         return f to lines
     }
@@ -829,6 +859,18 @@ class OneClickTask(
                 emptyList()
             }
             val joined = lines.joinToString(" ") { it.text }
+
+            if (!inPrompt && NetworkPrompt.isPrompt(lines)) {
+                inPrompt = true
+                try {
+                    onStatus("处理“网络不稳定”提示…")
+                    NetworkPrompt.handle(f, lines, { x, y -> tap(x, y) }, { rawGrab() }, { log(it) })
+                } finally {
+                    inPrompt = false
+                }
+                lastProgress = now()
+                continue
+            }
 
             val key = joined.take(160)
             if (key != lastKey) {

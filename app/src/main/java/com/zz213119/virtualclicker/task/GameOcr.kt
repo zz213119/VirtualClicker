@@ -8,7 +8,16 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 
 /** 中文 OCR（ML Kit 内置模型，离线）：读出画面上每一行文字及其中心位置（归一化 0..1）。 */
 object GameOcr {
-    data class Line(val text: String, val cx: Float, val cy: Float)
+    data class Line(
+        val text: String,
+        val cx: Float,
+        val cy: Float,
+        val left: Float = cx,
+        val right: Float = cx,
+        val top: Float = cy,
+        val bottom: Float = cy,
+        val aspect: Float = 1f,      // 图像宽/高，用来把“字高”换算成横向比例
+    )
 
     private val recognizer by lazy {
         TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
@@ -18,7 +27,13 @@ object GameOcr {
         val result = Tasks.await(recognizer.process(InputImage.fromBitmap(bmp, 0)))
         return result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
             val r = line.boundingBox ?: return@mapNotNull null
-            Line(line.text, r.exactCenterX() / bmp.width, r.exactCenterY() / bmp.height)
+            Line(
+                line.text,
+                r.exactCenterX() / bmp.width, r.exactCenterY() / bmp.height,
+                r.left.toFloat() / bmp.width, r.right.toFloat() / bmp.width,
+                r.top.toFloat() / bmp.height, r.bottom.toFloat() / bmp.height,
+                bmp.width.toFloat() / bmp.height
+            )
         }
     }
 }
