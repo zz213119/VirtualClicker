@@ -57,7 +57,11 @@ class OneClickTask(
         private const val JUMP_Y = 0.725f
         private const val BLOCK_DIFF = 6.0f        // 走一段前后两帧的平均亮度差低于它，认为没前进（实际数值请看日志 frameDiff）
         private const val CLIMB_SCORE = 0.72f      // 识别“爬墙时右下角下落键”的最低相似度（离线对比：正常画面最高 0.69，爬墙时 0.83 以上）
-        private val DOOR_OFFSETS = intArrayOf(-1, 1, -2, 2, -3, 3, -4, 4, -5, 5)   // 找门：相对当前位置依次向左/右横移的格数（每格约 1.2 米），逐步加大
+        // 找门：相对撞墙位置依次横移的格数（正=向右，每格约 1.2 米）。
+        // 对照 11-19 的两段录屏：店门在大窗户的右边（招牌中心偏右约 0.1 个屏宽），所以先向右、步子加大，右边试完再去左边。
+        private val DOOR_OFFSETS = intArrayOf(2, 4, 6, 1, 3, 5, 8, -2, -4, -6)
+        // 走路时把招牌放在画面横向这个位置（不是正中 0.5）：门在招牌右边，招牌偏左一点，画面正中间正对的就是门而不是门旁边的大窗户。
+        private const val AIM_X = 0.40f
         private const val DOOR_UNIT_MS = 500L
         private const val WALK_TIMEOUT_MS = 240_000L
         private const val MAX_WALKS = 30          // 最多走这么多段（每段约 1.2 秒），还没到柜台就放弃，免得越走越远
@@ -761,8 +765,8 @@ class OneClickTask(
                 continue
             }
 
-            // ---- 把店招转到画面中间 ----
-            val err = pos - 0.5f
+            // ---- 把店招转到 AIM_X（略偏左，正对店门）----
+            val err = pos - AIM_X
             val wantDx = -err / gain * 0.9f
             // 拖动太短（<0.025）镜头不会动，等于白转；误差不大就直接往前走
             if (kotlin.math.abs(err) > 0.10f && kotlin.math.abs(wantDx) >= 0.025f && adjusts < 8) {
