@@ -897,7 +897,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                     val v = displays[displayId]
                     val sink = sinks[displayId]?.surface
                     val preview = attachedSurfaces[displayId]
-                    v?.setSurface(null)
+                    // 不再先 setSurface(null)：那会让虚拟屏短暂 OFF，游戏被 pause/resume。直接换成目标 Surface 即可触发重绘。
                     v?.setSurface(preview ?: sink)
                 }
                 Thread.sleep(2500)
@@ -1066,6 +1066,13 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         return synchronized(captureLock) { captureLocked(displayId, maxWidth, vd, reader) }
     }
 
+    // 第二个后台接收器：后台取帧时在两个接收器之间来回切换来“踢”出新帧，而不是先 setSurface(null) 再接回去。
+    // setSurface(null) 会让虚拟屏短暂变成 OFF 状态，系统会把屏上的游戏 Activity 先 pause(原因 sleep) 再 resume，
+    // 每次取帧都这样折腾一次，游戏(Unity 一类)很容易被搞到卡死。（11-20 日志：息屏显示开始后 AI 读屏取帧的同一时刻出现
+    // wm_pause_activity ...sleep 和 14ms 后的 wm_resume_activity。）
+    private val sinks2 = ConcurrentHashMap<Int, ImageReader>()
+    private val bgOnAlt = ConcurrentHashMap<Int, Boolean>()
+
     private fun captureLocked(
         displayId: Int,
         maxWidth: Int,
@@ -1075,42 +1082,40 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         run {
             val preview = attachedSurfaces[displayId]?.takeIf { it.isValid }
             var switched = false
+            val alt = sinks2.getOrPut(displayId) {
+                ImageReader.newInstance(reader.width, reader.height, PixelFormat.RGBA_8888, 2)
+            }
+            // 本次从哪个接收器读：前台固定用主接收器；后台在主/备之间交替，保证每次都是“换了一个有效 Surface”。
+            var cap: ImageReader = if (preview != null) reader else if (bgOnAlt[displayId] == true) reader else alt
+            val capThread = Handler(captureThread.looper)
             try {
                 var latch = CountDownLatch(1)
-                reader.setOnImageAvailableListener(
-                    { latch.countDown() },
-                    Handler(captureThread.looper)
-                )
-                // Drop stale buffers so we only ever return a fresh frame.
-                while (true) {
-                    val old = reader.acquireLatestImage() ?: break
-                    old.close()
+                fun armAndDrain(r: ImageReader) {
+                    latch = CountDownLatch(1)
+                    r.setOnImageAvailableListener({ latch.countDown() }, capThread)
+                    // Drop stale buffers so we only ever return a fresh frame.
+                    while (true) {
+                        val old = r.acquireLatestImage() ?: break
+                        old.close()
+                    }
                 }
-                if (preview != null) {
-                    // Foreground: point the display at the sink, restore the preview afterwards.
-                    vd.setSurface(reader.surface)
-                    switched = true
-                } else {
-                    // Background / screen off: the sink is already attached, but a static
-                    // screen produces no new frames. Re-attaching it forces a redraw.
-                    vd.setSurface(null)
-                    vd.setSurface(reader.surface)
-                }
+                armAndDrain(cap)
+                vd.setSurface(cap.surface)
+                if (preview != null) switched = true else bgOnAlt[displayId] = (cap === alt)
                 var image: android.media.Image? = null
                 var blankRetries = 0
                 for (attempt in 1..3) {
                     if (attempt > 1) {
-                        // 上一帧是全黑的（切换 Surface 后的第一帧常见）：丢掉，重新踢一次拿新帧
-                        latch = CountDownLatch(1)
-                        while (true) {
-                            val o = reader.acquireLatestImage() ?: break
-                            o.close()
-                        }
-                        runCatching { vd.setSurface(null); vd.setSurface(reader.surface) }
+                        // 上一帧是全黑的（切换 Surface 后的第一帧常见）：丢掉，换到另一个接收器再踢一次拿新帧
+                        runCatching { cap.setOnImageAvailableListener(null, null) }
+                        cap = if (cap === reader) alt else reader
+                        armAndDrain(cap)
+                        runCatching { vd.setSurface(cap.surface) }
+                        if (preview == null) bgOnAlt[displayId] = (cap === alt)
                     }
                     var img: android.media.Image? = null
-                    if (latch.await(2000, TimeUnit.MILLISECONDS)) img = reader.acquireLatestImage()
-                    if (img == null) img = reader.acquireLatestImage()
+                    if (latch.await(2000, TimeUnit.MILLISECONDS)) img = cap.acquireLatestImage()
+                    if (img == null) img = cap.acquireLatestImage()
                     if (img == null) break
                     if (!planeIsBlank(img) || attempt == 3) { image = img; break }
                     blankRetries++
@@ -1148,6 +1153,7 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
                 return null
             } finally {
                 runCatching { reader.setOnImageAvailableListener(null, null) }
+                runCatching { alt.setOnImageAvailableListener(null, null) }
                 if (switched && preview != null) {
                     runCatching { vd.setSurface(preview) }
                         .onFailure { appendLog("CAPTURE RESTORE FAILED", it.stackTraceToString()) }
@@ -1249,6 +1255,8 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         val session = sessions.remove(displayId)
         val vd = displays.remove(displayId)
         val sink = sinks.remove(displayId)
+        val altSink = sinks2.remove(displayId)
+        bgOnAlt.remove(displayId)
 
         if (session != null) {
             removeTask(session.taskId, session.packageName, displayId, reason)
@@ -1286,6 +1294,9 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         }
 
         // The ImageReader must stay alive until the VirtualDisplay is detached.
+        if (altSink != null) {
+            runCatching { altSink.close() }
+        }
         if (sink != null) {
             runCatching { sink.close() }
                 .onFailure {
