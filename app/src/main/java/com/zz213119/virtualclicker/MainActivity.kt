@@ -209,7 +209,7 @@ class MainActivity : AppCompatActivity() {
         }
         previewContainer.setAspectRatio(displayWidth, displayHeight)
         scriptTrajectoryView.setDisplaySize(displayWidth, displayHeight)
-        previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+        applyPreviewBufferSize()
         previewSurfaceView.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 previewSurface = holder.surface
@@ -480,7 +480,7 @@ class MainActivity : AppCompatActivity() {
         if (savedResolutionPosition in resolutionPresets.indices) {
             resolutionSpinner.setSelection(savedResolutionPosition, false)
             applySelectedResolutionGeometry(resolutionPresets[savedResolutionPosition])
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
         } else {
@@ -657,7 +657,7 @@ class MainActivity : AppCompatActivity() {
                 "正在切换${if (gameMode) "游戏模式（4:3）" else "普通模式（自动比例）"}，先释放当前虚拟屏…"
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldDisplayId) }
-                previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+                applyPreviewBufferSize()
                 previewContainer.setAspectRatio(displayWidth, displayHeight)
                 updateResolutionInfo()
                 virtualDisplayStatus.text =
@@ -665,7 +665,7 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             applySelectedResolutionGeometry(preset)
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
             virtualDisplayStatus.text =
@@ -702,7 +702,7 @@ class MainActivity : AppCompatActivity() {
         val newHeight = displayHeight
 
         if (oldWidth == newWidth && oldHeight == newHeight && displayDpi == preset.dpi) {
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
             return
@@ -721,14 +721,14 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) { VirtualDisplayManager.release(oldDisplayId) }
                 if (operation != displayOperationGeneration) return@launch
-                previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+                applyPreviewBufferSize()
                 previewContainer.setAspectRatio(displayWidth, displayHeight)
                 updateResolutionInfo()
                 virtualDisplayStatus.text =
                     "已切换为 ${preset.label}${orientationLabel()}，请重新点“启动到虚拟屏”"
             }
         } else {
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
             virtualDisplayStatus.text =
@@ -947,7 +947,7 @@ class MainActivity : AppCompatActivity() {
                 .coerceIn(0, resolutionPresets.lastIndex)
             val preset = resolutionPresets[position]
             applySelectedResolutionGeometry(preset)
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
 
@@ -1200,7 +1200,7 @@ class MainActivity : AppCompatActivity() {
         // tear down the Shizuku UserService, Virtual Display, or target app.
         runCatching {
             previewContainer.setAspectRatio(displayWidth, displayHeight)
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             updateResolutionInfo()
         }.onFailure {
             android.util.Log.w("MainActivity", "configuration relayout failed", it)
@@ -1764,6 +1764,22 @@ class MainActivity : AppCompatActivity() {
             .onFailure { Toast.makeText(this, "脚本启动失败：${it.message}", Toast.LENGTH_LONG).show() }
     }
 
+
+    /**
+     * 首页预览只是一张 240dp×426dp 的缩略图，却一直把 SurfaceView 的缓冲设成和虚拟屏一样大（例如 1920x1080）：
+     * 每一帧都要让系统合成一次这么大的画面，加上游戏本身的渲染，GPU 压力很大。
+     * 11-19 22:12 的日志里，主线程卡在 HardwareRenderer.nSyncAndDrawFrame（等渲染线程）长达约 20 秒、
+     * 随后黑屏一下又恢复，像是 GPU/合成器被拖住。所以把预览缓冲缩到最长边不超过 960 像素（比例不变）。
+     * 手动控制用的全屏预览是另一个 Surface，不受影响；触摸坐标按虚拟屏尺寸换算，也不受影响。
+     */
+    private fun applyPreviewBufferSize() {
+        val maxSide = 960f
+        val scale = minOf(1f, maxSide / maxOf(displayWidth, displayHeight).toFloat())
+        val w = (displayWidth * scale).toInt().coerceAtLeast(2)
+        val h = (displayHeight * scale).toInt().coerceAtLeast(2)
+        previewSurfaceView.holder.setFixedSize(w, h)
+    }
+
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
 
@@ -1898,7 +1914,7 @@ class MainActivity : AppCompatActivity() {
             displayWidth = 1280
             displayHeight = 720
             displayDpi = 240
-            previewSurfaceView.holder.setFixedSize(displayWidth, displayHeight)
+            applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
             currentDisplayId = id
