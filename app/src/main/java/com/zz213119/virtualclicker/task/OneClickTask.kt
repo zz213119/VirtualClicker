@@ -564,22 +564,22 @@ class OneClickTask(
         // 进店后“店长特供”选项要往左走才会出现（实测）。选项只在靠近柜台的一小段距离内显示，跑过去只会闪 1~2 帧，
         // 所以每一步只走 0.3 秒左右（约 1~2 米）就停下看一眼；停在范围内选项会一直显示，不会漏掉。
         // 进店后的试探路线（摇杆方向相对镜头，镜头此时朝着店里；每步走完停下读一次选项）。
-        // 对照 11-19 21:15 的手动录屏：进门后先一直往前，再往右前方靠到吧台左端，“店长特供/管理店铺”就会出现。
-        // 之前的路线一上来就往左前方试探，结果一直在店左侧后墙附近打转，碰不到吧台。
+        // 11-20 实测：进门后正前方是一整排柜台，一直往前/往右前会撞在柜台上；正确的是往“左前方”走，绕过柜台左端，
+        // “店长特供/管理店铺”在左前方的柜台那里出现。（11-19 那版往右前走，撞柜台；更早的版本一上来就纯向左，
+        // 贴到左边后墙去了，所以要的是“左前”而不是“正左”。）
         val insidePattern = ArrayList<FloatArray>().apply {
-            repeat(4) { add(floatArrayOf(0f, -1f, 600f)) }          // 进门后直走到店中间
-            repeat(5) { add(floatArrayOf(0.45f, -0.9f, 500f)) }     // 往右前方走向吧台
-            repeat(3) { add(floatArrayOf(0.8f, -0.6f, 400f)) }      // 再偏右一点靠近吧台左端
-            repeat(2) { add(floatArrayOf(0f, -1f, 300f)) }
-            // 以下是兜底：原来的左偏试探
-            repeat(3) { add(floatArrayOf(-0.7f, -0.7f, 300f)) }
-            repeat(3) { add(floatArrayOf(-1f, 0f, 300f)) }
-            repeat(2) { add(floatArrayOf(0f, -1f, 300f)) }
-            repeat(3) { add(floatArrayOf(-0.5f, -0.9f, 300f)) }
+            add(floatArrayOf(0f, -1f, 500f))                            // 先进来一点
+            repeat(5) { add(floatArrayOf(-0.5f, -0.85f, 600f)) }        // 往左前方走（约偏左 30 度）
+            repeat(3) { add(floatArrayOf(-0.3f, -0.95f, 500f)) }        // 再略微偏左地向前
+            repeat(2) { add(floatArrayOf(0f, -1f, 400f)) }
+            // 以下是兜底
+            repeat(3) { add(floatArrayOf(-0.8f, -0.6f, 400f)) }
             repeat(2) { add(floatArrayOf(-1f, 0f, 300f)) }
-            repeat(2) { add(floatArrayOf(0.7f, -0.7f, 300f)) }
-            repeat(2) { add(floatArrayOf(1f, 0f, 300f)) }
+            repeat(3) { add(floatArrayOf(0.45f, -0.9f, 500f)) }
+            repeat(2) { add(floatArrayOf(0.8f, -0.6f, 400f)) }
         }
+        var insidePrevFrame: Bitmap? = null
+        var lastInsideForward = false
 
         var lastTurnMoved = true    // 最近一次 turn() 之后画面是否真的变了（没变=拖动被游戏忽略了）
 
@@ -718,10 +718,21 @@ class OneClickTask(
             if (inside && sign == null) {
                 if (!shotInside) { shotInside = true; shot(f, "walk-inside") }
                 if (insideSteps >= 60) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
+                // 上一步是往前走的，但画面几乎没变 → 撞到柜台了：先贴着柜台往左横移一小段再继续，而不是继续往前顶
+                val prevF = insidePrevFrame
+                insidePrevFrame = f
+                if (prevF != null && lastInsideForward && FrameOps.diff(prevF, f) < 6f) {
+                    log("W: inside blocked (frame barely changed), strafe left to go around the counter")
+                    pushJoystick(-1f, -0.15f, 500)
+                    lastInsideForward = false
+                    delay(300)
+                    continue
+                }
                 val p = insidePattern[insideSteps % insidePattern.size]
                 log("W: inside step #$insideSteps dir=(${p[0]},${p[1]}) ${p[2].toLong()}ms")
                 if (insideSteps % 5 == 0) logOcr("W-inside", lines)
                 pushJoystick(p[0], p[1], p[2].toLong())
+                lastInsideForward = p[1] <= -0.5f
                 insideSteps++
                 delay(300)
                 continue
