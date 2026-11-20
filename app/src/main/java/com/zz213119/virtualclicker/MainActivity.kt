@@ -388,7 +388,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.screenOffButton).setOnClickListener {
-            startActivity(Intent(this, com.zz213119.virtualclicker.ui.AodActivity::class.java))
+            startActivity(
+                Intent(this, com.zz213119.virtualclicker.ui.AodActivity::class.java)
+                    .putExtra("displayId", currentDisplayId)
+            )
         }
 
         findViewById<Button>(R.id.resetBackend).setOnClickListener {

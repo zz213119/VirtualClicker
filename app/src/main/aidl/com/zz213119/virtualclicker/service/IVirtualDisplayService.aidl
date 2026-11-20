@@ -73,6 +73,8 @@ interface IVirtualDisplayService {
     int clearLogs();
     // 删除超过 keepDays 天的日志和截图，返回删除的文件数
     int pruneLogs(int keepDays);
+    // 诊断：记录这块虚拟屏上游戏的 Activity 状态、进程状态(是否被冻结)和相关系统事件，用来排查息屏后游戏卡死
+    oneway void logGameDiag(int displayId, String tag);
     boolean saveShot(String name, in byte[] data);
 
     // Power hygiene: the app marks the service busy while a task/script runs and sends a

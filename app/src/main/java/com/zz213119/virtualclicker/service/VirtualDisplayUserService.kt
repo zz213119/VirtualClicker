@@ -676,6 +676,54 @@ class VirtualDisplayUserService : IVirtualDisplayService.Stub() {
         return n
     }
 
+    @Volatile private var lastGameDiagAt = 0L
+
+    /**
+     * 诊断息屏 / 息屏显示后游戏卡死：事件发生后 1 / 6 / 12 秒各记一次——
+     * 虚拟屏上游戏 Activity 的状态(RESUMED/PAUSED/STOPPED)、游戏进程的状态(有没有被冻结、进程优先级)，
+     * 以及这段时间里系统对这个包的暂停/停止/冻结事件。15 秒内只记一次。
+     */
+    override fun logGameDiag(displayId: Int, tag: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastGameDiagAt < 15_000) return
+        lastGameDiagAt = now
+        val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date(now))
+        Thread {
+            runCatching {
+                var waited = 0L
+                for (d in longArrayOf(1000, 5000, 6000)) {
+                    Thread.sleep(d)
+                    waited += d
+                    val acts = shellText("dumpsys", "activity", "activities").lines()
+                    val start = acts.indexOfFirst { it.trim().startsWith("Display #$displayId ") }
+                    val block = if (start >= 0) acts.drop(start + 1).takeWhile { !it.trim().startsWith("Display #") } else emptyList()
+                    val actLines = block.filter {
+                        it.contains("ActivityRecord{") || it.contains("ResumedActivity") || it.contains("state=")
+                    }.take(12).map { it.trim().take(220) }
+                    val pkg = Regex("A=\\d+:([\\w.]+)").find(block.joinToString("\n"))?.groupValues?.get(1)
+                    var procLines = emptyList<String>()
+                    var evLines = emptyList<String>()
+                    if (pkg != null) {
+                        val pl = shellText("dumpsys", "activity", "processes").lines()
+                        val idx = pl.indexOfFirst { it.contains("ProcessRecord{") && it.contains(pkg) }
+                        if (idx >= 0) {
+                            procLines = pl.drop(idx).take(40).filter {
+                                Regex("(?i)frozen|procState|curAdj|setAdj|cached|state=|pid=").containsMatchIn(it)
+                            }.take(10).map { it.trim().take(200) }
+                        }
+                        evLines = shellText("logcat", "-d", "-v", "threadtime", "-b", "events", "-T", since).lines().filter {
+                            it.contains(pkg) && Regex("am_freeze|am_unfreeze|am_proc_died|am_kill|wm_pause|wm_stop|wm_resume|wm_destroy|am_on_paused|am_on_stop").containsMatchIn(it)
+                        }.take(20).map { it.trim().take(200) }
+                    }
+                    appendLog(
+                        "GAME DIAG",
+                        "tag=$tag displayId=$displayId +${waited}ms pkg=$pkg\nactivities:\n${actLines.joinToString("\n")}\nprocess:\n${procLines.joinToString("\n")}\nevents:\n${evLines.joinToString("\n")}"
+                    )
+                }
+            }
+        }.start()
+    }
+
     override fun pruneLogs(keepDays: Int): Int {
         val cutoff = System.currentTimeMillis() - keepDays.coerceAtLeast(1) * 24L * 3600_000L
         var n = 0

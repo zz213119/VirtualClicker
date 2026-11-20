@@ -34,6 +34,7 @@ class AodActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var content: LinearLayout
     private lateinit var statusText: TextView
+    private var displayIdExtra = -1
     private lateinit var time: TextView
     private lateinit var date: TextView
     private lateinit var hintText: TextView
@@ -56,6 +57,8 @@ class AodActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        displayIdExtra = intent.getIntExtra("displayId", -1)
+        if (displayIdExtra >= 0) com.zz213119.virtualclicker.core.VirtualDisplayManager.logGameDiag(displayIdExtra, "aod_start")
         window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
         window.attributes = window.attributes.apply { screenBrightness = 0.01f }
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -134,6 +137,11 @@ class AodActivity : AppCompatActivity() {
         handler.removeCallbacks(statusRunnable)
         handler.postDelayed(shiftRunnable, 60_000)
         handler.post(statusRunnable)
+    }
+
+    override fun onDestroy() {
+        if (displayIdExtra >= 0) com.zz213119.virtualclicker.core.VirtualDisplayManager.logGameDiag(displayIdExtra, "aod_end")
+        super.onDestroy()
     }
 
     override fun onPause() {
