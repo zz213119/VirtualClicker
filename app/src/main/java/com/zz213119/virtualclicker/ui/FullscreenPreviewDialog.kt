@@ -190,6 +190,56 @@ class FullscreenPreviewDialog(
             }
         )
 
+        // 试跑：在这里把已录的路线放一遍，站在起点点一下就能看到回放会走到哪（和一键开刷进店后的回放是同一段代码）
+        var replayJob: kotlinx.coroutines.Job? = null
+        val replayButton = TextView(context).apply {
+            text = "试跑路线"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(16.dp, 0, 16.dp, 0)
+            contentDescription = "试跑已录的路线"
+            setOnClickListener {
+                val rr = com.zz213119.virtualclicker.core.RouteRecorder
+                val job = replayJob
+                if (job != null && job.isActive) {
+                    job.cancel()
+                    text = "试跑路线"
+                    coordinateHint.text = "已停止试跑"
+                    return@setOnClickListener
+                }
+                if (rr.recording) {
+                    coordinateHint.text = "请先停止录制"
+                    return@setOnClickListener
+                }
+                if (!rr.hasRoute(context)) {
+                    coordinateHint.text = "还没有录制的路线，先点“录制路线”录一遍"
+                    return@setOnClickListener
+                }
+                text = "停止试跑"
+                coordinateHint.text = "试跑中…（和一键开刷进店后的回放一样，再点一次可停止）"
+                replayJob = activity.lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) {
+                        runCatching { rr.replay(context, displayId, displayWidth, displayHeight) { } }.getOrDefault(false)
+                    }
+                    text = "试跑路线"
+                    coordinateHint.text = if (ok) "试跑完成" else "试跑中断"
+                }
+            }
+        }
+        root.addView(
+            replayButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                44.dp,
+                Gravity.TOP or Gravity.START
+            ).apply {
+                topMargin = 116.dp
+                leftMargin = 16.dp
+            }
+        )
+
         val close = TextView(context).apply {
             text = "✕"
             textSize = 34f

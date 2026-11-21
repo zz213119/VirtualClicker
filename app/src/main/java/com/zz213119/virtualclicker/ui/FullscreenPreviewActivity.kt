@@ -36,6 +36,9 @@ class FullscreenPreviewActivity : Activity() {
     private lateinit var modeButton: TextView
     private lateinit var closeButton: TextView
     private lateinit var recordButton: TextView
+    private lateinit var replayButton: TextView
+    private var replayJob: kotlinx.coroutines.Job? = null
+    private val replayScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.SupervisorJob())
     private var pressedControl = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -147,6 +150,23 @@ class FullscreenPreviewActivity : Activity() {
             ).apply { topMargin = 72; leftMargin = 16 }
         )
 
+        replayButton = TextView(this).apply {
+            text = "试跑路线"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(18, 0, 18, 0)
+        }
+        replayButton.setOnClickListener { toggleReplay() }
+        root.addView(
+            replayButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, 48,
+                Gravity.TOP or Gravity.START
+            ).apply { topMargin = 128; leftMargin = 16 }
+        )
+
         closeButton = TextView(this).apply {
             text = "✕"
             textSize = 34f
@@ -251,6 +271,17 @@ class FullscreenPreviewActivity : Activity() {
                 return 3
             }
         }
+        if (::replayButton.isInitialized) {
+            val loc = IntArray(2)
+            replayButton.getLocationOnScreen(loc)
+            if (rawX >= loc[0] &&
+                rawX < loc[0] + replayButton.width &&
+                rawY >= loc[1] &&
+                rawY < loc[1] + replayButton.height
+            ) {
+                return 4
+            }
+        }
         return 0
     }
 
@@ -273,6 +304,7 @@ class FullscreenPreviewActivity : Activity() {
                         1 -> closeButton.performClick()
                         2 -> modeButton.performClick()
                         3 -> recordButton.performClick()
+                        4 -> replayButton.performClick()
                     }
                     return true
                 }
@@ -302,6 +334,29 @@ class FullscreenPreviewActivity : Activity() {
         }
     }
 
+    /** 试跑：把已录的路线放一遍，再点一次停止。 */
+    private fun toggleReplay() {
+        val rr = com.zz213119.virtualclicker.core.RouteRecorder
+        val job = replayJob
+        if (job != null && job.isActive) {
+            job.cancel()
+            replayButton.text = "试跑路线"
+            hint.text = "已停止试跑"
+            return
+        }
+        if (rr.recording) { hint.text = "请先停止录制"; return }
+        if (!rr.hasRoute(this)) { hint.text = "还没有录制的路线，先点“录制路线”录一遍"; return }
+        replayButton.text = "停止试跑"
+        hint.text = "试跑中…（和一键开刷进店后的回放一样，再点一次可停止）"
+        replayJob = replayScope.launch {
+            val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { rr.replay(this@FullscreenPreviewActivity, displayId, displayWidth, displayHeight) { } }.getOrDefault(false)
+            }
+            replayButton.text = "试跑路线"
+            hint.text = if (ok) "试跑完成" else "试跑中断"
+        }
+    }
+
     private fun attachSurface(surface: android.view.Surface) {
         if (displayId >= 0 && surface.isValid) {
             Thread { VirtualDisplayManager.setDisplaySurface(displayId, surface) }.start()
@@ -315,6 +370,7 @@ class FullscreenPreviewActivity : Activity() {
     }
 
     override fun onDestroy() {
+        replayScope.cancel()
         if (com.zz213119.virtualclicker.core.RouteRecorder.recording) {
             com.zz213119.virtualclicker.core.RouteRecorder.stopAndSave(this)
         }
