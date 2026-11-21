@@ -153,6 +153,43 @@ class FullscreenPreviewDialog(
             }
         )
 
+        // 录制进店路线：从店门口开始自己走到出现“店长特供”，再点停止；一键开刷进店后会照着回放。
+        val recordButton = TextView(context).apply {
+            text = "录制路线"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(16.dp, 0, 16.dp, 0)
+            contentDescription = "录制进店路线"
+            setOnClickListener {
+                val rr = com.zz213119.virtualclicker.core.RouteRecorder
+                if (!rr.recording) {
+                    rr.start()
+                    text = "停止录制 ●"
+                    setTextColor(Color.RED)
+                    coordinateHint.text = "录制中：从店门口开始走到出现“店长特供”，然后点停止录制"
+                } else {
+                    val (n, ms) = rr.stopAndSave(context)
+                    text = "录制路线"
+                    setTextColor(Color.WHITE)
+                    coordinateHint.text =
+                        if (n > 0) "已保存进店路线：$n 个事件，%.1f 秒".format(ms / 1000.0) else "没有录到操作"
+                }
+            }
+        }
+        root.addView(
+            recordButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                44.dp,
+                Gravity.TOP or Gravity.START
+            ).apply {
+                topMargin = 64.dp
+                leftMargin = 16.dp
+            }
+        )
+
         val close = TextView(context).apply {
             text = "✕"
             textSize = 34f
@@ -258,6 +295,7 @@ class FullscreenPreviewDialog(
             // This makes dragging responsive and lets games receive real motion.
             val transformed = MotionEvent.obtain(event)
             transformed.transform(Matrix().apply { setScale(scaleX, scaleY) })
+            com.zz213119.virtualclicker.core.RouteRecorder.record(transformed, displayWidth, displayHeight)
             VirtualDisplayManager.injectMotionEventAsync(transformed, displayId) {
                 coordinateHint.post { coordinateHint.text = "输入注入失败，请查看日志" }
             }
@@ -323,6 +361,9 @@ class FullscreenPreviewDialog(
     }
 
     override fun dismiss() {
+        if (com.zz213119.virtualclicker.core.RouteRecorder.recording) {
+            com.zz213119.virtualclicker.core.RouteRecorder.stopAndSave(context)
+        }
         super.dismiss()
         onClosed()
     }
