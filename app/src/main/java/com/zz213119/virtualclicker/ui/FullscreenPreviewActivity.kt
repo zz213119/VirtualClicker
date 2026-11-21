@@ -16,6 +16,8 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.view.WindowCompat
 import com.zz213119.virtualclicker.core.VirtualDisplayManager
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class FullscreenPreviewActivity : Activity() {
 
