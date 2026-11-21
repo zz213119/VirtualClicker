@@ -581,6 +581,19 @@ class OneClickTask(
         var insidePrevFrame: Bitmap? = null
         var lastInsideForward = false
         var routeTried = false
+        // 回放录制路线之后的“就地小范围搜索”：11-21 日志里回放能把角色带到柜台附近，但起点/朝向有细微差别，
+        // 常常差一点点（成功的那次是回放后再往左横移了两小步才出现选项）。所以回放后不再走原来的大范围试探，
+        // 而是在当前位置左右来回横移（每步 0.3 秒，正=右、负=左），再往前/往后微调一步后重复。
+        val postReplayPattern = ArrayList<FloatArray>().apply {
+            repeat(3) {
+                repeat(4) { add(floatArrayOf(-1f, 0f, 300f)) }     // 向左 4 步
+                repeat(8) { add(floatArrayOf(1f, 0f, 300f)) }      // 再向右 8 步（越过原位置到右边 4 步）
+                repeat(4) { add(floatArrayOf(-1f, 0f, 300f)) }     // 回到原位
+                add(if (it == 0) floatArrayOf(0f, -1f, 300f) else floatArrayOf(0f, 1f, 500f))   // 第 1 轮后往前一点，第 2 轮后往后一点
+            }
+        }
+        var postReplayIdx = 0
+        var postReplayActive = false
 
         var lastTurnMoved = true    // 最近一次 turn() 之后画面是否真的变了（没变=拖动被游戏忽略了）
 
@@ -727,22 +740,27 @@ class OneClickTask(
                     log("W: inside: replay recorded route")
                     val ok = com.zz213119.virtualclicker.core.RouteRecorder.replay(ctx, displayId, w, h) { log("W: $it") }
                     log("W: inside: route replay finished=$ok")
+                    postReplayActive = ok
                     delay(700)
                     continue
                 }
-                if (insideSteps >= 60) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
+                if (insideSteps >= 100) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
                 // 上一步是往前走的，但画面几乎没变 → 撞到柜台了：先贴着柜台往左横移一小段再继续，而不是继续往前顶
                 val prevF = insidePrevFrame
                 insidePrevFrame = f
-                if (prevF != null && lastInsideForward && FrameOps.diff(prevF, f) < 6f) {
+                if (prevF != null && lastInsideForward && !(postReplayActive && postReplayIdx < postReplayPattern.size) && FrameOps.diff(prevF, f) < 6f) {
                     log("W: inside blocked (frame barely changed), strafe left to go around the counter")
                     pushJoystick(-1f, -0.15f, 500)
                     lastInsideForward = false
                     delay(300)
                     continue
                 }
-                val p = insidePattern[insideSteps % insidePattern.size]
-                log("W: inside step #$insideSteps dir=(${p[0]},${p[1]}) ${p[2].toLong()}ms")
+                val p = if (postReplayActive && postReplayIdx < postReplayPattern.size) {
+                    postReplayPattern[postReplayIdx++]
+                } else {
+                    insidePattern[insideSteps % insidePattern.size]
+                }
+                log("W: inside step #$insideSteps dir=(${p[0]},${p[1]}) ${p[2].toLong()}ms" + if (postReplayActive && postReplayIdx <= postReplayPattern.size) " [post-replay local search]" else "")
                 if (insideSteps % 5 == 0) logOcr("W-inside", lines)
                 pushJoystick(p[0], p[1], p[2].toLong())
                 lastInsideForward = p[1] <= -0.5f
