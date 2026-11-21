@@ -130,6 +130,11 @@ class SettingsActivity : AppCompatActivity() {
         bindSwitch(R.id.switchNativeGame, "one_click_native", Prefs.oneClickNative(this)) {
             findViewById<SwitchCompat>(R.id.switchNativeGame).text = nativeGameLabel(it)
         }
+        bindSwitch(R.id.switchUseRoute, "use_inside_route", Prefs.useInsideRoute(this))
+        findViewById<android.widget.Button>(R.id.clearRoute).setOnClickListener {
+            com.zz213119.virtualclicker.core.RouteRecorder.clear(this)
+            android.widget.Toast.makeText(this, "已清除录制的进店路线", android.widget.Toast.LENGTH_SHORT).show()
+        }
         bindSwitch(R.id.switchAutoQuit, "auto_quit_game", Prefs.autoQuitGame(this))
         bindSwitch(R.id.switchNotify, "notify", Prefs.notifyEnabled(this))
         bindSwitch(R.id.switchCpuLock, "cpu_wakelock", Prefs.cpuWakeLock(this))

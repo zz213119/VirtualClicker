@@ -580,6 +580,7 @@ class OneClickTask(
         }
         var insidePrevFrame: Bitmap? = null
         var lastInsideForward = false
+        var routeTried = false
 
         var lastTurnMoved = true    // 最近一次 turn() 之后画面是否真的变了（没变=拖动被游戏忽略了）
 
@@ -717,6 +718,18 @@ class OneClickTask(
             // ---- 店内：没看到选项，按一组方向小步试探柜台 ----
             if (inside && sign == null) {
                 if (!shotInside) { shotInside = true; shot(f, "walk-inside") }
+                // 如果用户录制过进店路线：先原样回放一遍（回放完回到下面的“读选项 + 试探”流程）
+                if (!routeTried && com.zz213119.virtualclicker.core.Prefs.useInsideRoute(ctx) &&
+                    com.zz213119.virtualclicker.core.RouteRecorder.hasRoute(ctx)
+                ) {
+                    routeTried = true
+                    onStatus("回放录制的进店路线…")
+                    log("W: inside: replay recorded route")
+                    val ok = com.zz213119.virtualclicker.core.RouteRecorder.replay(ctx, displayId, w, h) { log("W: $it") }
+                    log("W: inside: route replay finished=$ok")
+                    delay(700)
+                    continue
+                }
                 if (insideSteps >= 60) return fail("进了店但没找到“店长特供”选项（试探了 $insideSteps 步）")
                 // 上一步是往前走的，但画面几乎没变 → 撞到柜台了：先贴着柜台往左横移一小段再继续，而不是继续往前顶
                 val prevF = insidePrevFrame

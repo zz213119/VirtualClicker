@@ -35,6 +35,7 @@ class FullscreenPreviewActivity : Activity() {
     private lateinit var hint: TextView
     private lateinit var modeButton: TextView
     private lateinit var closeButton: TextView
+    private lateinit var recordButton: TextView
     private var pressedControl = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -129,6 +130,23 @@ class FullscreenPreviewActivity : Activity() {
             ).apply { topMargin = 12; leftMargin = 16 }
         )
 
+        recordButton = TextView(this).apply {
+            text = "录制路线"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(18, 0, 18, 0)
+        }
+        recordButton.setOnClickListener { toggleRecording() }
+        root.addView(
+            recordButton,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, 48,
+                Gravity.TOP or Gravity.START
+            ).apply { topMargin = 72; leftMargin = 16 }
+        )
+
         closeButton = TextView(this).apply {
             text = "✕"
             textSize = 34f
@@ -191,6 +209,7 @@ class FullscreenPreviewActivity : Activity() {
 
             val transformed = MotionEvent.obtain(event)
             transformed.transform(Matrix().apply { setScale(scaleX, scaleY) })
+            com.zz213119.virtualclicker.core.RouteRecorder.record(transformed, displayWidth, displayHeight)
             VirtualDisplayManager.injectMotionEventAsync(transformed, displayId)
             transformed.recycle()
             true
@@ -221,6 +240,17 @@ class FullscreenPreviewActivity : Activity() {
                 return 2
             }
         }
+        if (::recordButton.isInitialized) {
+            val loc = IntArray(2)
+            recordButton.getLocationOnScreen(loc)
+            if (rawX >= loc[0] &&
+                rawX < loc[0] + recordButton.width &&
+                rawY >= loc[1] &&
+                rawY < loc[1] + recordButton.height
+            ) {
+                return 3
+            }
+        }
         return 0
     }
 
@@ -242,6 +272,7 @@ class FullscreenPreviewActivity : Activity() {
                     when (target) {
                         1 -> closeButton.performClick()
                         2 -> modeButton.performClick()
+                        3 -> recordButton.performClick()
                     }
                     return true
                 }
@@ -253,6 +284,22 @@ class FullscreenPreviewActivity : Activity() {
         }
 
         return super.dispatchTouchEvent(ev)
+    }
+
+    /** 录制进店路线：从店门口开始自己走到出现“店长特供”，再点停止；一键开刷进店后会照着回放。 */
+    private fun toggleRecording() {
+        val rr = com.zz213119.virtualclicker.core.RouteRecorder
+        if (!rr.recording) {
+            rr.start()
+            recordButton.text = "停止录制 ●"
+            recordButton.setTextColor(Color.RED)
+            hint.text = "录制中：从店门口开始走到出现“店长特供”，然后点停止录制"
+        } else {
+            val (n, ms) = rr.stopAndSave(this)
+            recordButton.text = "录制路线"
+            recordButton.setTextColor(Color.WHITE)
+            hint.text = if (n > 0) "已保存进店路线：$n 个事件，%.1f 秒".format(ms / 1000.0) else "没有录到操作"
+        }
     }
 
     private fun attachSurface(surface: android.view.Surface) {
@@ -268,6 +315,9 @@ class FullscreenPreviewActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (com.zz213119.virtualclicker.core.RouteRecorder.recording) {
+            com.zz213119.virtualclicker.core.RouteRecorder.stopAndSave(this)
+        }
         CoordinatePickBus.listener = null
         detachSurface()
         previewSurface?.release()

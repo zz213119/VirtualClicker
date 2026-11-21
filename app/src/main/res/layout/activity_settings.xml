@@ -381,6 +381,24 @@
             android:textSize="14sp" />
 
         <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchUseRoute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="44dp"
+            android:text="进店后回放我录制的路线（在“手动控制”全屏界面左上角点“录制路线”录制）"
+            android:textColor="@color/vc_text"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/clearRoute"
+            style="@style/Widget.VC.Button.Tonal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="清除已录制的进店路线" />
+
+        <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchAi"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

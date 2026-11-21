@@ -47,6 +47,8 @@ object Prefs {
     /** 允许 AI 操作虚拟屏（点击/长按/滑动）：单独的开关，默认关闭；关闭时 AI 只能读取画面文字。 */
     fun aiControl(c: Context) = sp(c).getBoolean("ai_control", false)
     /** 只保留最近 7 天的日志和截图（自动删除更早的）。默认关闭。 */
+    /** 一键开刷进店后，如果录制过进店路线就原样回放（默认开）。 */
+    fun useInsideRoute(c: Context) = sp(c).getBoolean("use_inside_route", true)
     fun keepLogs7Days(c: Context) = sp(c).getBoolean("keep_logs_7d", false)
     fun showDebugTools(c: Context) = sp(c).getBoolean("show_debug_tools", false)
 
