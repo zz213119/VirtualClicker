@@ -563,21 +563,22 @@ class OneClickTask(
         var pendingDx = 0f
         // 进店后“店长特供”选项要往左走才会出现（实测）。选项只在靠近柜台的一小段距离内显示，跑过去只会闪 1~2 帧，
         // 所以每一步只走 0.3 秒左右（约 1~2 米）就停下看一眼；停在范围内选项会一直显示，不会漏掉。
-        // 进店后的试探路线（摇杆方向相对镜头，镜头此时朝着店里；每步走完停下读一次选项）。
-        // 11-20 实测：进门后正前方是一整排柜台，一直往前/往右前会撞在柜台上；正确的是往“左前方”走，绕过柜台左端，
-        // “店长特供/管理店铺”在左前方的柜台那里出现。（11-19 那版往右前走，撞柜台；更早的版本一上来就纯向左，
-        // 贴到左边后墙去了，所以要的是“左前”而不是“正左”。）
+        // 进店后的路线（摇杆方向相对镜头；每走一步 0.3 秒，停下识别一次选项，选项一出现就点）。
+        // 11-22 按你的实测改成固定路线：画面上出现“收入”之后——往前 3 步、往左 10 步、往右 2 步、最后往前 2 步。
+        // （之前几版的猜测路线和“录制回放”效果都越来越差，回放还会把角色带出店外，所以回放默认关掉了。）
         val insidePattern = ArrayList<FloatArray>().apply {
-            add(floatArrayOf(0f, -1f, 500f))                            // 先进来一点
-            repeat(5) { add(floatArrayOf(-0.5f, -0.85f, 600f)) }        // 往左前方走（约偏左 30 度）
-            repeat(3) { add(floatArrayOf(-0.3f, -0.95f, 500f)) }        // 再略微偏左地向前
-            repeat(2) { add(floatArrayOf(0f, -1f, 400f)) }
-            // 以下是兜底
-            repeat(3) { add(floatArrayOf(-0.8f, -0.6f, 400f)) }
+            repeat(3) { add(floatArrayOf(0f, -1f, 300f)) }     // 往前 3 步
+            repeat(10) { add(floatArrayOf(-1f, 0f, 300f)) }    // 往左 10 步
+            repeat(2) { add(floatArrayOf(1f, 0f, 300f)) }      // 往右 2 步
+            repeat(2) { add(floatArrayOf(0f, -1f, 300f)) }     // 最后往前 2 步
+            // 以上是固定路线（共 17 步）。下面是路线走完还没出现选项时的兜底：在附近再小范围试探
             repeat(2) { add(floatArrayOf(-1f, 0f, 300f)) }
-            repeat(3) { add(floatArrayOf(0.45f, -0.9f, 500f)) }
-            repeat(2) { add(floatArrayOf(0.8f, -0.6f, 400f)) }
+            repeat(4) { add(floatArrayOf(1f, 0f, 300f)) }
+            repeat(2) { add(floatArrayOf(-1f, 0f, 300f)) }
+            add(floatArrayOf(0f, -1f, 300f))
+            add(floatArrayOf(0f, 1f, 400f))
         }
+        val fixedRouteSteps = 17
         var insidePrevFrame: Bitmap? = null
         var lastInsideForward = false
         var routeTried = false
@@ -748,7 +749,7 @@ class OneClickTask(
                 // 上一步是往前走的，但画面几乎没变 → 撞到柜台了：先贴着柜台往左横移一小段再继续，而不是继续往前顶
                 val prevF = insidePrevFrame
                 insidePrevFrame = f
-                if (prevF != null && lastInsideForward && !(postReplayActive && postReplayIdx < postReplayPattern.size) && FrameOps.diff(prevF, f) < 6f) {
+                if (prevF != null && lastInsideForward && insideSteps >= fixedRouteSteps && !(postReplayActive && postReplayIdx < postReplayPattern.size) && FrameOps.diff(prevF, f) < 6f) {
                     log("W: inside blocked (frame barely changed), strafe left to go around the counter")
                     pushJoystick(-1f, -0.15f, 500)
                     lastInsideForward = false

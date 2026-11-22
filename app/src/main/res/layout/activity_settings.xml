@@ -386,7 +386,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:minHeight="44dp"
-            android:text="进店后回放我录制的路线（在“手动控制”全屏界面左上角点“录制路线”录制）"
+            android:text="进店后回放我录制的路线（默认关闭，默认走固定路线：前 3、左 10、右 2、前 2；录制在“手动控制”全屏界面左上角）"
             android:textColor="@color/vc_text"
             android:textSize="14sp" />
 
