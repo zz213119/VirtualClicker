@@ -47,6 +47,15 @@ object VirtualDisplayManager {
     @Volatile
     var oneClickDisplayId: Int = -1
 
+    /**
+     * 当前在用的虚拟屏（手动启动的也算）。界面 Activity 被系统重建（比如从通知点回应用）时，它自己的 currentDisplayId 会丢成 -1，
+     * 预览就变成“待机”，之后 AI 再发消息拿到的屏号是 -1，点不了。这里在进程内记一份，界面重建后据此接管回来。
+     */
+    @Volatile var activeDisplayId: Int = -1
+    @Volatile var activeWidth: Int = 0
+    @Volatile var activeHeight: Int = 0
+    @Volatile var activeDpi: Int = 0
+
     @Volatile
     private var appContext: Context? = null
 

@@ -390,22 +390,35 @@ class AiSession(context: Context) {
         }
         val older = JSONArray()
         for (i in 0 until cut) older.put(history.get(i))
-        val transcript = transcript(older, format).takeLast(60_000)
-        val summary = runCatching { summarize(format, base, model, key, transcript) }
+        // 之前是 transcript(...).takeLast(60_000)：历史大多是屏幕文字(工具结果)，取最后 6 万字符就把最早的用户指令丢光了，
+        // 压缩后 AI 只记得几百字、连“继续”指什么都不知道。现在：用户的指令永远完整保留，先压工具结果，实在太长再裁中间。
+        val transcript = smartTranscript(older, format)
+        var summary = runCatching { summarize(format, base, model, key, transcript) }
             .getOrElse {
                 LogWriter.write("AI", "summarize failed: ${it.message?.take(200)}")
-                "（较早的对话因压缩失败被省略）"
+                null
             }
+        if (summary.isNullOrBlank()) {
+            // 摘要请求失败：不再丢掉全部内容，用本地方式留下用户的所有指令和 AI 最近的回复
+            summary = fallbackSummary(older, format)
+        }
         val fresh = JSONArray()
-        fresh.put(JSONObject().put("role", "user").put("content", "【之前对话的摘要】\n$summary"))
-        fresh.put(JSONObject().put("role", "assistant").put("content", "好的，我已了解之前的进展，请继续。"))
+        fresh.put(
+            JSONObject().put("role", "user").put(
+                "content",
+                "【之前对话的摘要】\n$summary\n\n" +
+                    "【系统提示】对话较长，较早的内容已压缩成上面的摘要。接下来请直接根据摘要里的“总目标 / 当前状态 / 下一步”，" +
+                    "结合当前屏幕继续完成刚才正在做的任务；不要向用户询问“继续指什么”。只有任务真的做完，或必须由用户决定时才停下来说明。"
+            )
+        )
+        fresh.put(JSONObject().put("role", "assistant").put("content", "好的，我已了解之前的进展，会直接继续刚才的任务。"))
         for (i in cut until history.length()) fresh.put(history.get(i))
         val after = fresh.toString().length
         history = fresh
         lastPromptTokens = 0
         lastHistoryChars = after
-        emit("（上下文已压缩：$chars → $after 字符）\n")
-        LogWriter.write("AI", "compress done $chars -> $after chars")
+        emit("（上下文已压缩：$chars → $after 字符，已自动继续）\n")
+        LogWriter.write("AI", "compress done $chars -> $after chars summaryChars=${summary.length}")
     }
 
     private fun lastRealUserIndex(format: String): Int {
@@ -488,13 +501,94 @@ class AiSession(context: Context) {
         return sb.toString()
     }
 
+    /**
+     * 供摘要用的对话文本：用户的指令永远保留（每条最多 1500 字），先把工具结果缩短；
+     * 还是太长就丢掉工具结果、再缩短工具调用和 AI 的话；最后实在超了，保留开头 8000 字（最早的目标）和结尾。
+     */
+    private fun smartTranscript(arr: JSONArray, format: String): String {
+        val limit = 45_000
+        var t = buildTranscript(arr, format, resultLen = 150, callLen = 120, aiLen = 800, userLen = 1500)
+        if (t.length > limit) t = buildTranscript(arr, format, resultLen = 0, callLen = 60, aiLen = 500, userLen = 1200)
+        if (t.length > limit) t = buildTranscript(arr, format, resultLen = 0, callLen = 0, aiLen = 300, userLen = 800)
+        if (t.length > limit) t = t.take(8_000) + "\n……（中间部分省略）……\n" + t.takeLast(limit - 8_000)
+        return t
+    }
+
+    private fun buildTranscript(arr: JSONArray, format: String, resultLen: Int, callLen: Int, aiLen: Int, userLen: Int): String {
+        val sb = StringBuilder()
+        fun clip(x: String, n: Int) = if (x.length > n) x.take(n) + "…" else x
+        for (i in 0 until arr.length()) {
+            val m = arr.getJSONObject(i)
+            val role = m.optString("role")
+            if (format == AiConfig.FORMAT_OPENAI) {
+                when (role) {
+                    "user" -> sb.append("用户：").append(clip(textOf(m.opt("content")), userLen)).append('\n')
+                    "assistant" -> {
+                        val t = textOf(m.opt("content"))
+                        if (t.isNotBlank()) sb.append("AI：").append(clip(t, aiLen)).append('\n')
+                        val calls = m.optJSONArray("tool_calls")
+                        if (callLen > 0 && calls != null) for (k in 0 until calls.length()) {
+                            val f = calls.getJSONObject(k).optJSONObject("function")
+                            sb.append("AI 调用工具：").append(f?.optString("name")).append(' ')
+                                .append(clip(f?.optString("arguments") ?: "", callLen)).append('\n')
+                        }
+                    }
+                    "tool" -> if (resultLen > 0) sb.append("工具结果：").append(clip(m.optString("content"), resultLen)).append('\n')
+                }
+            } else {
+                val c = m.opt("content")
+                val who = if (role == "user") "用户：" else "AI："
+                val lim = if (role == "user") userLen else aiLen
+                if (c is String) sb.append(who).append(clip(c, lim)).append('\n')
+                else if (c is JSONArray) for (k in 0 until c.length()) {
+                    val b = c.getJSONObject(k)
+                    when (b.optString("type")) {
+                        "text" -> sb.append(who).append(clip(b.optString("text"), lim)).append('\n')
+                        "tool_use" -> if (callLen > 0) sb.append("AI 调用工具：").append(b.optString("name")).append(' ')
+                            .append(clip(b.optJSONObject("input")?.toString() ?: "", callLen)).append('\n')
+                        "tool_result" -> if (resultLen > 0) sb.append("工具结果：")
+                            .append(clip(textOf(b.opt("content")).ifEmpty { b.opt("content")?.toString() ?: "" }, resultLen)).append('\n')
+                    }
+                }
+            }
+        }
+        return sb.toString()
+    }
+
+    /** 摘要请求失败时的本地兜底：留下用户的所有指令（最近 15 条）和 AI 最近的几句回复，至少不会“全忘光”。 */
+    private fun fallbackSummary(arr: JSONArray, format: String): String {
+        val users = ArrayList<String>()
+        val ais = ArrayList<String>()
+        for (i in 0 until arr.length()) {
+            val m = arr.getJSONObject(i)
+            val role = m.optString("role")
+            val t = textOf(m.opt("content")).trim()
+            if (t.isBlank()) continue
+            if (role == "user" && !t.startsWith("【之前对话的摘要】")) users.add(t.take(600))
+            if (role == "assistant") ais.add(t.take(300))
+        }
+        return buildString {
+            append("（自动摘要失败，以下是较早对话里的原始信息）\n")
+            append("【用户的指令（按时间，最近 ").append(minOf(15, users.size)).append(" 条）】\n")
+            users.takeLast(15).forEachIndexed { i, u -> append(i + 1).append(". ").append(u).append('\n') }
+            append("【AI 最近的回复】\n")
+            ais.takeLast(3).forEach { append("- ").append(it).append('\n') }
+        }
+    }
+
     private fun summarize(format: String, base: String, model: String, key: String, transcript: String): String {
-        val prompt = "下面是用户和一个屏幕助手（可以读取、操作用户的虚拟屏）的历史对话记录。请压缩成一份供后续继续对话使用的摘要：" +
-            "保留用户的目标、已完成的操作及结果、屏幕上的关键信息（界面状态、重要文字和位置）、未完成的事项和用户的偏好；不要编造；" +
-            "用中文，不超过 800 字。\n\n=====\n$transcript"
+        val prompt = "下面是用户和一个屏幕助手（可以读取、操作用户的虚拟屏）的历史对话记录。请压缩成一份供后续“直接接着做”的摘要，" +
+            "按下面的结构写，每一项都要写，没有就写“无”：\n" +
+            "1.【总目标】用户最初和最近一次提出的目标（原话要点）；\n" +
+            "2.【用户的指令和约定】逐条列出，包括所有数字、批次、停止条件、偏好、禁止事项，不要漏；\n" +
+            "3.【已完成】已经做了什么、结果、数量和进度（保留具体数字）；\n" +
+            "4.【当前状态】最后看到的屏幕或界面状态；\n" +
+            "5.【经验】已经确认可用的点击位置、按钮文字、操作顺序，以及遇到的坑和解决办法；\n" +
+            "6.【下一步】如果任务还没做完，接下来应该做什么。\n" +
+            "要求：不要编造；保留所有关键数字和文字；用中文；总长度不超过 3000 字。\n\n=====\n$transcript"
         return if (format == AiConfig.FORMAT_ANTHROPIC) {
             val url = AiConfig.chatUrl(AiConfig.FORMAT_ANTHROPIC, base)
-            val body = JSONObject().put("model", model).put("max_tokens", 1500)
+            val body = JSONObject().put("model", model).put("max_tokens", 3500)
                 .put("system", "你是对话摘要助手。")
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
             val resp = post(url, mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"), body)

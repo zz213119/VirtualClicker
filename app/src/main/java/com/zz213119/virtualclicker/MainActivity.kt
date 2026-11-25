@@ -83,6 +83,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pickCoordinateStatus: TextView
     private var pointPickMode = false
     private var currentDisplayId: Int = -1
+        set(v) {
+            field = v
+            VirtualDisplayManager.activeDisplayId = v
+            if (v >= 0) {
+                VirtualDisplayManager.activeWidth = displayWidth
+                VirtualDisplayManager.activeHeight = displayHeight
+                VirtualDisplayManager.activeDpi = displayDpi
+            }
+        }
     private lateinit var previewSurfaceView: SurfaceView
     private var previewSurface: Surface? = null
     private lateinit var previewPlaceholder: TextView
@@ -1903,23 +1912,32 @@ class MainActivity : AppCompatActivity() {
             currentDisplayId = -1
             setPreviewRunning(false)
         }
-        val id = VirtualDisplayManager.oneClickDisplayId
+        val oc = VirtualDisplayManager.oneClickDisplayId
+        val act = VirtualDisplayManager.activeDisplayId
+        val id = if (oc >= 0) oc else act
         if (id >= 0 && dm.getDisplay(id) == null) {
-            VirtualDisplayManager.oneClickDisplayId = -1
+            if (id == oc) VirtualDisplayManager.oneClickDisplayId = -1
+            if (id == act) VirtualDisplayManager.activeDisplayId = -1
             return
         }
         if (currentDisplayId < 0 && id >= 0) {
             val surface = previewSurface
             if (surface?.isValid != true) return
-            displayWidth = 1280
-            displayHeight = 720
-            displayDpi = 240
+            if (id == oc || VirtualDisplayManager.activeWidth <= 0) {
+                displayWidth = 1280
+                displayHeight = 720
+                displayDpi = 240
+            } else {
+                displayWidth = VirtualDisplayManager.activeWidth
+                displayHeight = VirtualDisplayManager.activeHeight
+                displayDpi = VirtualDisplayManager.activeDpi
+            }
             applyPreviewBufferSize()
             previewContainer.setAspectRatio(displayWidth, displayHeight)
             updateResolutionInfo()
             currentDisplayId = id
             setPreviewRunning(true)
-            virtualDisplayStatus.text = "已接管一键开刷的虚拟屏 #$id（预览中）"
+            virtualDisplayStatus.text = if (id == oc) "已接管一键开刷的虚拟屏 #$id（预览中）" else "已重新接管虚拟屏 #$id（预览中）"
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) { VirtualDisplayManager.setDisplaySurface(id, surface) }
             }
