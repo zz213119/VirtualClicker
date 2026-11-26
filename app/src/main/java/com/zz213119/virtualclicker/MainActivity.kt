@@ -1906,41 +1906,73 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** 让主页预览接管后台（一键开刷）创建的虚拟屏；虚拟屏被关闭/自动关闭后复位。 */
+    private var displayMissingPolls = 0
+    private var adopting = false
+
+    /**
+     * 每秒调用：(1) 保持“当前虚拟屏”状态正确；(2) 界面重建后把仍在运行的虚拟屏接管回来。
+     *
+     * 之前只要 DisplayManager.getDisplay(id) 返回 null 就立刻把 currentDisplayId 清成 -1：
+     * 从通知回到应用时，应用的显示器缓存偶尔是过期的，会短暂返回 null，结果状态被误判成“待机”，
+     * 之后 AI 再发消息拿到的屏号是 -1，就点不了了（11-25 的反馈）。
+     * 现在改成：连续 3 次拿不到才去问后台服务；后台服务明确说“没有这块屏”才清除，后台没连上时不清除。
+     */
     private fun adoptOneClickDisplay() {
         val dm = getSystemService(DisplayManager::class.java) ?: return
-        if (currentDisplayId >= 0 && dm.getDisplay(currentDisplayId) == null) {
-            currentDisplayId = -1
-            setPreviewRunning(false)
+        if (currentDisplayId >= 0) {
+            if (dm.getDisplay(currentDisplayId) != null) {
+                displayMissingPolls = 0
+            } else if (++displayMissingPolls >= 3 && !adopting) {
+                adopting = true
+                val id = currentDisplayId
+                lifecycleScope.launch {
+                    val exists = withContext(Dispatchers.IO) { VirtualDisplayManager.displayExists(id) }
+                    if (exists == false && currentDisplayId == id) {
+                        currentDisplayId = -1
+                        setPreviewRunning(false)
+                    }
+                    displayMissingPolls = 0
+                    adopting = false
+                }
+            }
+            return
         }
+        displayMissingPolls = 0
         val oc = VirtualDisplayManager.oneClickDisplayId
         val act = VirtualDisplayManager.activeDisplayId
         val id = if (oc >= 0) oc else act
-        if (id >= 0 && dm.getDisplay(id) == null) {
-            if (id == oc) VirtualDisplayManager.oneClickDisplayId = -1
-            if (id == act) VirtualDisplayManager.activeDisplayId = -1
-            return
-        }
-        if (currentDisplayId < 0 && id >= 0) {
-            val surface = previewSurface
-            if (surface?.isValid != true) return
-            if (id == oc || VirtualDisplayManager.activeWidth <= 0) {
-                displayWidth = 1280
-                displayHeight = 720
-                displayDpi = 240
-            } else {
-                displayWidth = VirtualDisplayManager.activeWidth
-                displayHeight = VirtualDisplayManager.activeHeight
-                displayDpi = VirtualDisplayManager.activeDpi
+        if (id < 0 || adopting) return
+        val surface = previewSurface
+        if (surface?.isValid != true) return
+        adopting = true
+        lifecycleScope.launch {
+            val exists = withContext(Dispatchers.IO) { VirtualDisplayManager.displayExists(id) }
+            when {
+                exists == false -> {
+                    if (id == oc) VirtualDisplayManager.oneClickDisplayId = -1
+                    if (id == act) VirtualDisplayManager.activeDisplayId = -1
+                }
+                exists == true && currentDisplayId < 0 -> {
+                    if (id == oc || VirtualDisplayManager.activeWidth <= 0) {
+                        displayWidth = 1280
+                        displayHeight = 720
+                        displayDpi = 240
+                    } else {
+                        displayWidth = VirtualDisplayManager.activeWidth
+                        displayHeight = VirtualDisplayManager.activeHeight
+                        displayDpi = VirtualDisplayManager.activeDpi
+                    }
+                    applyPreviewBufferSize()
+                    previewContainer.setAspectRatio(displayWidth, displayHeight)
+                    updateResolutionInfo()
+                    currentDisplayId = id
+                    setPreviewRunning(true)
+                    virtualDisplayStatus.text =
+                        if (id == oc) "已接管一键开刷的虚拟屏 #$id（预览中）" else "已重新接管虚拟屏 #$id（预览中）"
+                    withContext(Dispatchers.IO) { VirtualDisplayManager.setDisplaySurface(id, surface) }
+                }
             }
-            applyPreviewBufferSize()
-            previewContainer.setAspectRatio(displayWidth, displayHeight)
-            updateResolutionInfo()
-            currentDisplayId = id
-            setPreviewRunning(true)
-            virtualDisplayStatus.text = if (id == oc) "已接管一键开刷的虚拟屏 #$id（预览中）" else "已重新接管虚拟屏 #$id（预览中）"
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) { VirtualDisplayManager.setDisplaySurface(id, surface) }
-            }
+            adopting = false
         }
     }
 

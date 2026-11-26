@@ -329,6 +329,12 @@ object VirtualDisplayManager {
             .onFailure { Log.e(TAG, "releaseAll failed", it) }
     }
 
+    /** 后台服务是否还认这块虚拟屏：true=还在，false=已经没了，null=后台没连上、不确定（不能据此判定“没了”）。 */
+    fun displayExists(displayId: Int): Boolean? {
+        val s = service ?: return null
+        return runCatching { s.getDisplaySize(displayId) != null }.getOrNull()
+    }
+
     fun displaySize(displayId: Int): IntArray? =
         runCatching { service?.getDisplaySize(displayId) }
             .onFailure { Log.e(TAG, "displaySize failed", it) }
