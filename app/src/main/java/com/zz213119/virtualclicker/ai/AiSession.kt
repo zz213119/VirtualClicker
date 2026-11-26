@@ -392,12 +392,17 @@ class AiSession(context: Context) {
         for (i in 0 until cut) older.put(history.get(i))
         // 之前是 transcript(...).takeLast(60_000)：历史大多是屏幕文字(工具结果)，取最后 6 万字符就把最早的用户指令丢光了，
         // 压缩后 AI 只记得几百字、连“继续”指什么都不知道。现在：用户的指令永远完整保留，先压工具结果，实在太长再裁中间。
-        val transcript = smartTranscript(older, format)
-        var summary = runCatching { summarize(format, base, model, key, transcript) }
-            .getOrElse {
-                LogWriter.write("AI", "summarize failed: ${it.message?.take(200)}")
-                null
-            }
+        // 11-25 日志：传 6 万字符给模型做摘要，等了整整 2 分钟 timeout，压缩失败，AI 就什么都不记得了。
+        // 现在：第一次只传约 2 万字符、最多等 75 秒；失败再传约 6 千字符重试一次；还失败才用本地兜底摘要。
+        var summary: String? = null
+        for ((attempt, lim) in listOf(20_000, 6_000).withIndex()) {
+            summary = runCatching { summarize(format, base, model, key, smartTranscript(older, format, lim)) }
+                .getOrElse {
+                    LogWriter.write("AI", "summarize attempt ${attempt + 1} failed (limit=$lim): ${it.message?.take(200)}")
+                    null
+                }
+            if (!summary.isNullOrBlank()) break
+        }
         if (summary.isNullOrBlank()) {
             // 摘要请求失败：不再丢掉全部内容，用本地方式留下用户的所有指令和 AI 最近的回复
             summary = fallbackSummary(older, format)
@@ -505,12 +510,11 @@ class AiSession(context: Context) {
      * 供摘要用的对话文本：用户的指令永远保留（每条最多 1500 字），先把工具结果缩短；
      * 还是太长就丢掉工具结果、再缩短工具调用和 AI 的话；最后实在超了，保留开头 8000 字（最早的目标）和结尾。
      */
-    private fun smartTranscript(arr: JSONArray, format: String): String {
-        val limit = 45_000
+    private fun smartTranscript(arr: JSONArray, format: String, limit: Int = 20_000): String {
         var t = buildTranscript(arr, format, resultLen = 150, callLen = 120, aiLen = 800, userLen = 1500)
         if (t.length > limit) t = buildTranscript(arr, format, resultLen = 0, callLen = 60, aiLen = 500, userLen = 1200)
         if (t.length > limit) t = buildTranscript(arr, format, resultLen = 0, callLen = 0, aiLen = 300, userLen = 800)
-        if (t.length > limit) t = t.take(8_000) + "\n……（中间部分省略）……\n" + t.takeLast(limit - 8_000)
+        if (t.length > limit) t = t.take(limit / 4) + "\n……（中间部分省略）……\n" + t.takeLast(limit - limit / 4)
         return t
     }
 
@@ -591,14 +595,14 @@ class AiSession(context: Context) {
             val body = JSONObject().put("model", model).put("max_tokens", 3500)
                 .put("system", "你是对话摘要助手。")
                 .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            val resp = post(url, mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"), body)
+            val resp = post(url, mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"), body, 75_000)
             textOf(resp.getJSONArray("content")).ifBlank { throw IOException("摘要为空") }
         } else {
             val body = JSONObject().put("model", model)
                 .put("messages", JSONArray()
                     .put(JSONObject().put("role", "system").put("content", "你是对话摘要助手。"))
                     .put(JSONObject().put("role", "user").put("content", prompt)))
-            val resp = post(AiConfig.chatUrl(AiConfig.FORMAT_OPENAI, base), mapOf("Authorization" to "Bearer $key"), body)
+            val resp = post(AiConfig.chatUrl(AiConfig.FORMAT_OPENAI, base), mapOf("Authorization" to "Bearer $key"), body, 75_000)
             resp.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content").ifBlank { throw IOException("摘要为空") }
         }
     }
@@ -991,20 +995,20 @@ class AiSession(context: Context) {
     }
 
     // ---------------- HTTP ----------------
-    private fun post(url: String, headers: Map<String, String>, body: JSONObject): JSONObject {
+    private fun post(url: String, headers: Map<String, String>, body: JSONObject, readTimeoutMs: Int = 120_000): JSONObject {
         val t0 = System.currentTimeMillis()
         try {
-            return postInner(url, headers, body)
+            return postInner(url, headers, body, readTimeoutMs)
         } finally {
             modelMs += System.currentTimeMillis() - t0
         }
     }
 
-    private fun postInner(url: String, headers: Map<String, String>, body: JSONObject): JSONObject {
+    private fun postInner(url: String, headers: Map<String, String>, body: JSONObject, readTimeoutMs: Int = 120_000): JSONObject {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 20_000
-            readTimeout = 120_000
+            readTimeout = readTimeoutMs
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
