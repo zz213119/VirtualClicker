@@ -1558,18 +1558,11 @@ class MainActivity : AppCompatActivity() {
                 setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
             }
         }
-        // 先把所有页面还原到静止状态
-        pageIds.forEachIndexed { idx, id ->
-            val v = findViewById<View>(id)
-            v.animate().cancel()
-            v.alpha = 1f; v.translationX = 0f; v.scaleX = 1f; v.scaleY = 1f
-            v.visibility = if (idx == i || (animate && idx == old && old != i)) View.VISIBLE else View.GONE
-        }
         moveIndicator(i, animate && old != i)
         // 注意：这里要用 findViewById 而不是 previewContainer 属性——setupBottomNav 在 onCreate 里很早就会调用 selectTab，
         // 那时 previewContainer 还没初始化，直接用会在启动时闪退。
         val preview = findViewById<View>(R.id.previewContainer)
-        // 虚拟屏预览(SurfaceView)不参与过渡动画：离开首页时立刻藏起来，回到首页时等动画结束后再显示，
+        // 虚拟屏预览(SurfaceView)不参与过渡动画：离开首页时立刻藏起来，回到首页时过一会儿再显示，
         // 避免它不透明地跟着页面滑动。
         previewRevealRunnable?.let { preview.removeCallbacks(it) }
         previewRevealRunnable = null
@@ -1583,23 +1576,55 @@ class MainActivity : AppCompatActivity() {
         } else if (i == 0) {
             preview.visibility = View.VISIBLE
         }
-        if (!animate || old == i) return
-        // 页面过渡：新页面从行进方向轻轻滑入并淡入，旧页面淡出并稍微后退
-        val dir = if (i > old) 1 else -1
-        val dist = dp(28).toFloat()
-        val inV = findViewById<View>(pageIds[i])
-        val outV = findViewById<View>(pageIds[old])
-        inV.alpha = 0f
-        inV.translationX = dir * dist
-        inV.scaleX = 0.98f; inV.scaleY = 0.98f
-        inV.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f)
-            .setDuration(340).setInterpolator(android.view.animation.DecelerateInterpolator(1.8f)).start()
-        outV.animate().alpha(0f).translationX(-dir * dist * 0.5f)
-            .setDuration(200).setInterpolator(android.view.animation.AccelerateInterpolator())
-            .withEndAction {
-                outV.visibility = View.GONE
-                outV.alpha = 1f; outV.translationX = 0f
-            }.start()
+        slidePagesTo(i, animate && old != i)
+    }
+
+    private var pagerPos = 0f                 // 当前“翻页位置”（0=首页，1=脚本，2=设置，中间值表示正在滑动）
+    private var pagerAnim: android.animation.ValueAnimator? = null
+
+    /**
+     * 模仿参考应用的切换：三个页面像一排并排放着，一起横向滑动（没有淡入淡出），
+     * 一次约 0.26 秒，先加速再减速地停下；隔着一个标签切换时会一路滑过中间的页面，而不是直接跳过去。
+     * 页面跟着点击的标签方向走：点右边的标签，页面向右滑出、新页面从左边滑入；点左边的标签则相反（参考录屏里就是这样）。
+     */
+    private fun slidePagesTo(target: Int, animate: Boolean) {
+        pagerAnim?.cancel()
+        val container = findViewById<View>(pageIds[0]).parent as View
+        val w = container.width.toFloat()
+        fun apply(pos: Float) {
+            pagerPos = pos
+            pageIds.forEachIndexed { j, id ->
+                val v = findViewById<View>(id)
+                v.alpha = 1f; v.scaleX = 1f; v.scaleY = 1f
+                v.translationX = (pos - j) * w
+                v.visibility = if (kotlin.math.abs(pos - j) < 1f) View.VISIBLE else View.INVISIBLE
+            }
+        }
+        fun finish() {
+            pagerPos = target.toFloat()
+            pageIds.forEachIndexed { j, id ->
+                val v = findViewById<View>(id)
+                v.translationX = 0f
+                v.visibility = if (j == target) View.VISIBLE else View.GONE
+            }
+        }
+        if (!animate || w <= 0f) {
+            finish()
+            return
+        }
+        // 动画开始前先把起点位置摆好（接着上一次没滑完的位置继续）
+        apply(pagerPos)
+        pagerAnim = android.animation.ValueAnimator.ofFloat(pagerPos, target.toFloat()).apply {
+            duration = 260
+            interpolator = android.view.animation.PathInterpolator(0.4f, 0f, 0.2f, 1f)
+            addUpdateListener { apply(it.animatedValue as Float) }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                private var cancelled = false
+                override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
+                override fun onAnimationEnd(animation: android.animation.Animator) { if (!cancelled) finish() }
+            })
+            start()
+        }
     }
 
     /** 把连接状态同步到首页顶部的状态卡片（每秒调用一次，没变化就不动）。 */
