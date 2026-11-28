@@ -1585,7 +1585,9 @@ class MainActivity : AppCompatActivity() {
     /**
      * 模仿参考应用的切换：三个页面像一排并排放着，一起横向滑动（没有淡入淡出），
      * 一次约 0.26 秒，先加速再减速地停下；隔着一个标签切换时会一路滑过中间的页面，而不是直接跳过去。
-     * 页面跟着点击的标签方向走：点右边的标签，页面向右滑出、新页面从左边滑入；点左边的标签则相反（参考录屏里就是这样）。
+     * 方向是常规的翻页方向：点右边的标签，页面向左滑、新页面从右边滑入；点左边的标签则相反。
+     * （11-29 逐帧量过参考录屏的页面位置：首页→工具时工具页从右往左移进来；关于→首页时页面向右移、中间的工具页从左到右经过。
+     * 上一版我把方向看反了。）
      */
     private fun slidePagesTo(target: Int, animate: Boolean) {
         pagerAnim?.cancel()
@@ -1596,7 +1598,7 @@ class MainActivity : AppCompatActivity() {
             pageIds.forEachIndexed { j, id ->
                 val v = findViewById<View>(id)
                 v.alpha = 1f; v.scaleX = 1f; v.scaleY = 1f
-                v.translationX = (pos - j) * w
+                v.translationX = (j - pos) * w
                 v.visibility = if (kotlin.math.abs(pos - j) < 1f) View.VISIBLE else View.INVISIBLE
             }
         }
